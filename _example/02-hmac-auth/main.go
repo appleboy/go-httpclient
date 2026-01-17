@@ -3,10 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"httpclient"
 	"log"
 	"net/http"
-
-	"httpclient"
 )
 
 func main() {
