@@ -487,6 +487,47 @@ func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 	}
 }
 
+// TestAuthConfig_VerifyHMACSignature_FutureTimestamp tests that timestamps
+// that are too far in the future are rejected. This prevents clock skew attacks
+// where an attacker could send a request with a future timestamp.
+func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
+	config := &AuthConfig{
+		Secret: "test-secret",
+	}
+
+	body := []byte(`{"username":"test"}`)
+	// Timestamp from 10 minutes in the future
+	timestamp := time.Now().Add(10 * time.Minute).Unix()
+	signature := config.calculateHMACSignature(timestamp, "POST", "/api/auth", body)
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		testExampleAuthURL,
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	req.Header.Set(testXSignature, signature)
+	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
+
+	// Verify with 5 minute max age - should fail for future timestamp
+	err = config.VerifyHMACSignature(req, 5*time.Minute)
+	if err == nil {
+		t.Error("VerifyHMACSignature() error = nil, want future timestamp error")
+		t.Error("SECURITY VULNERABILITY: Request with future timestamp was accepted!")
+		t.Error("An attacker could use clock skew attacks to:")
+		t.Error("  - Bypass timestamp expiration by sending far-future timestamps")
+		t.Error("  - Reuse the same signature for an extended period")
+		t.Errorf("Request timestamp: %d (10 minutes in the future)", timestamp)
+		t.Errorf("Current time: %d", time.Now().Unix())
+	} else {
+		t.Logf("Good! Verification correctly failed: %v", err)
+	}
+}
+
 // TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity tests that query parameters
 // are included in the HMAC signature calculation. Without this, an attacker could modify
 // query parameters without invalidating the signature, which is a security vulnerability.

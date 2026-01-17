@@ -181,8 +181,17 @@ func (c *AuthConfig) VerifyHMACSignature(req *http.Request, maxAge time.Duration
 	}
 
 	requestTime := time.Unix(timestamp, 0)
-	if time.Since(requestTime) > maxAge {
+	now := time.Now()
+	timeDiff := now.Sub(requestTime)
+
+	// Reject if timestamp is too old
+	if timeDiff > maxAge {
 		return fmt.Errorf("request timestamp expired")
+	}
+
+	// Reject if timestamp is too far in the future (clock skew attack prevention)
+	if timeDiff < -maxAge {
+		return fmt.Errorf("request timestamp is too far in the future")
 	}
 
 	// Read body
