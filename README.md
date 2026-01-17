@@ -150,6 +150,8 @@ func main() {
 
 ### Usage Examples
 
+For complete, runnable examples, see the [`_example`](_example/) directory. Each example includes detailed documentation and can be run independently.
+
 #### No Authentication
 
 For public endpoints or when authentication is not required:
@@ -173,6 +175,8 @@ auth.AddAuthHeaders(req, nil)
 // Request will include:
 // X-API-Secret: my-secret-key
 ```
+
+**See full example:** [`_example/01-simple-auth`](_example/01-simple-auth/)
 
 #### HMAC Signature Authentication
 
@@ -205,6 +209,8 @@ message = "1704067200POST/transactions?user=123{\"action\":\"transfer\",\"amount
 signature = HMAC-SHA256("shared-secret", message)
 ```
 
+**See full example:** [`_example/02-hmac-auth`](_example/02-hmac-auth/)
+
 #### Custom Header Names
 
 Override default header names to match your API standards:
@@ -229,6 +235,8 @@ auth.NonceHeader = "X-Request-ID"
 auth.AddAuthHeaders(req, body)
 // Request will include custom header names
 ```
+
+**See full example:** [`_example/03-custom-headers`](_example/03-custom-headers/)
 
 #### Server-Side Verification
 
@@ -261,6 +269,8 @@ func main() {
     http.ListenAndServe(":8080", authMiddleware(mux))
 }
 ```
+
+**See full example:** [`_example/04-server-verification`](_example/04-server-verification/)
 
 ## Features
 
@@ -454,6 +464,11 @@ go tool cover -html=coverage.txt
 ├── go.mod               # Module definition
 ├── Makefile            # Build automation
 ├── .golangci.yml       # Linting configuration
+├── _example/           # Runnable examples
+│   ├── 01-simple-auth/           # Simple API key authentication
+│   ├── 02-hmac-auth/             # HMAC signature authentication
+│   ├── 03-custom-headers/        # Custom header names
+│   └── 04-server-verification/   # Server-side verification
 └── .github/workflows/  # CI/CD pipelines
     ├── testing.yml     # Multi-platform testing
     ├── security.yml    # Trivy security scanning
