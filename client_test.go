@@ -572,38 +572,6 @@ func TestAuthRoundTripper_Integration_HMAC(t *testing.T) {
 	}
 }
 
-// TestNewAuthTransport tests the lower-level NewAuthTransport function
-func TestNewAuthTransport(t *testing.T) {
-	config := NewAuthConfig(AuthModeSimple, "test-key")
-	transport := NewAuthTransport(config, nil)
-
-	if transport == nil {
-		t.Fatal("Expected non-nil transport")
-	}
-
-	// Create a client with the transport
-	client := &http.Client{Transport: transport}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-API-Secret") != "test-key" {
-			t.Error("Auth header not added")
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("Request failed: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", resp.StatusCode)
-	}
-}
-
 // TestAuthRoundTripper_ErrorHandling tests various error scenarios
 func TestAuthRoundTripper_ErrorHandling(t *testing.T) {
 	// Test with missing secret

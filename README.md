@@ -39,7 +39,6 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
     - [Constants](#constants)
     - [Functions](#functions)
       - [NewAuthClient (Recommended)](#newauthclient-recommended)
-      - [NewAuthTransport](#newauthtransport)
       - [Client Options](#client-options)
       - [NewAuthConfig](#newauthconfig)
       - [AddAuthHeaders](#addauthheaders)
@@ -486,21 +485,6 @@ client := httpclient.NewAuthClient(
     httpclient.WithMaxBodySize(5*1024*1024),
 )
 ```
-
-#### NewAuthTransport
-
-```go
-func NewAuthTransport(config *AuthConfig, transport http.RoundTripper) http.RoundTripper
-```
-
-Creates an authenticated RoundTripper for advanced transport composition scenarios.
-
-**Parameters:**
-
-- `config`: Authentication configuration
-- `transport`: Base transport to wrap (can be nil for default)
-
-**Returns:** RoundTripper with automatic authentication
 
 #### Client Options
 

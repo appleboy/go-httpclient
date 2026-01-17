@@ -88,38 +88,8 @@ func main() {
 	fmt.Println("    4. Request sent via base transport")
 	_ = client2
 
-	// Example 3: Using NewAuthTransport for more control
-	fmt.Println("\nExample 3: Using NewAuthTransport for manual control")
-	fmt.Println("  Request flow: Custom setup with explicit transport chain\n")
-
-	// Create auth config
-	config := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "secret")
-
-	// Manually build transport chain
-	// Start from base
-	chain := http.RoundTripper(baseTransport)
-
-	// Add metrics
-	chain = &metricsTransport{base: chain}
-
-	// Add logging
-	chain = &loggingTransport{base: chain}
-
-	// Add authentication (using NewAuthTransport)
-	authTransport := httpclient.NewAuthTransport(config, chain)
-
-	// Create client with the complete chain
-	client3 := &http.Client{
-		Transport: authTransport,
-		Timeout:   10 * time.Second,
-	}
-
-	fmt.Println("  ✓ Client created with manual transport chain")
-	fmt.Println("    (provides maximum control over transport order)")
-	_ = client3
-
-	// Example 4: Real-world scenario
-	fmt.Println("\nExample 4: Real-world scenario")
+	// Example 3: Real-world scenario
+	fmt.Println("\nExample 3: Real-world scenario")
 	fmt.Println("  Production setup with:")
 	fmt.Println("  - Custom connection pool settings")
 	fmt.Println("  - Request logging")
@@ -155,8 +125,7 @@ func main() {
 	// Summary
 	fmt.Println("\n=== Summary ===")
 	fmt.Println("✓ Transports can be chained for composable functionality")
-	fmt.Println("✓ Use WithTransport() for simple chaining")
-	fmt.Println("✓ Use NewAuthTransport() for manual control")
+	fmt.Println("✓ Use WithTransport() to customize the underlying transport chain")
 	fmt.Println("✓ Order matters: outer transports wrap inner ones")
 	fmt.Println("✓ Perfect for adding logging, metrics, rate limiting, etc.")
 

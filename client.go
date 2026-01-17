@@ -269,25 +269,3 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 		Timeout:   options.timeout,
 	}
 }
-
-// NewAuthTransport creates an authenticated RoundTripper for transport composition.
-//
-// This is a lower-level API suitable for scenarios where you need to compose
-// multiple transports (e.g., logging, rate limiting, authentication).
-//
-// Example:
-//
-//	config := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "secret")
-//	baseTransport := &http.Transport{MaxIdleConns: 100}
-//	authTransport := httpclient.NewAuthTransport(config, baseTransport)
-//	client := &http.Client{Transport: authTransport}
-//
-// For most use cases, NewAuthClient is recommended instead.
-func NewAuthTransport(config *AuthConfig, transport http.RoundTripper) http.RoundTripper {
-	return &authRoundTripper{
-		config:       config,
-		transport:    transport,
-		maxBodySize:  10 * 1024 * 1024, // Default 10MB
-		skipAuthFunc: nil,
-	}
-}
