@@ -27,6 +27,7 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [HMAC Signature Authentication](#hmac-signature-authentication)
       - [Custom Header Names](#custom-header-names)
       - [Server-Side Verification](#server-side-verification)
+      - [Automatic Authentication with RoundTripper](#automatic-authentication-with-roundtripper)
   - [Features](#features)
   - [Security](#security)
     - [HMAC Signature Calculation](#hmac-signature-calculation)
@@ -37,6 +38,8 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [AuthConfig](#authconfig)
     - [Constants](#constants)
     - [Functions](#functions)
+      - [NewAuthClient (Recommended)](#newauthclient-recommended)
+      - [Client Options](#client-options)
       - [NewAuthConfig](#newauthconfig)
       - [AddAuthHeaders](#addauthheaders)
       - [VerifyHMACSignature](#verifyhmacsignature)
@@ -95,12 +98,15 @@ Without proper authentication, your APIs are vulnerable to:
 
 ### Key Benefits
 
+- **Automatic Authentication**: One-line client creation with built-in request signing
+- **Flexible Configuration**: Option Pattern for easy customization without breaking changes
+- **Two API Styles**: Automatic (RoundTripper) for simplicity, manual (AddAuthHeaders) for control
 - **Zero Dependencies** (except `google/uuid` for nonce generation)
 - **Simple API**: Easy to integrate into existing HTTP clients
 - **Dual Purpose**: Works for both client-side signing and server-side verification
 - **Customizable**: Override default header names to match your API standards
-- **Production Ready**: Comprehensive test coverage and security scanning
-- **Well Tested**: 560+ lines of test code covering all scenarios
+- **Production Ready**: 90%+ test coverage, comprehensive linting, and security scanning
+- **Well Tested**: 1200+ lines of test code covering all scenarios
 
 ## How
 
@@ -111,6 +117,40 @@ go get github.com/appleboy/go-httpclient
 ```
 
 ### Quick Start
+
+**Option 1**: Automatic Authentication (Recommended)
+
+```go
+package main
+
+import (
+    "bytes"
+    "fmt"
+
+    "github.com/appleboy/go-httpclient"
+)
+
+func main() {
+    // Create authenticated HTTP client
+    client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "your-secret-key")
+
+    // Send request - authentication headers added automatically!
+    body := []byte(`{"user": "john"}`)
+    resp, err := client.Post(
+        "https://api.example.com/users",
+        "application/json",
+        bytes.NewReader(body),
+    )
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    fmt.Println("Request sent with automatic HMAC authentication")
+}
+```
+
+**Option 2**: Manual Authentication (Advanced)
 
 ```go
 package main
@@ -124,14 +164,14 @@ import (
 )
 
 func main() {
-    // Create auth config with HMAC mode
+    // Create auth config
     auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "your-secret-key")
 
     // Create HTTP request
     body := []byte(`{"user": "john"}`)
     req, _ := http.NewRequest("POST", "https://api.example.com/users", bytes.NewReader(body))
 
-    // Add authentication headers
+    // Manually add authentication headers
     if err := auth.AddAuthHeaders(req, body); err != nil {
         panic(err)
     }
@@ -144,7 +184,7 @@ func main() {
     }
     defer resp.Body.Close()
 
-    fmt.Println("Request sent with HMAC authentication")
+    fmt.Println("Request sent with manual HMAC authentication")
 }
 ```
 
@@ -272,18 +312,70 @@ func main() {
 
 **See full example:** [`_example/04-server-verification`](_example/04-server-verification/)
 
+#### Automatic Authentication with RoundTripper
+
+The simplest way to use this package - create an HTTP client that automatically signs all requests:
+
+```go
+// Create authenticated client with automatic signing
+client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "secret")
+
+// Use it like a normal http.Client - authentication is automatic!
+resp, err := client.Post(
+    "https://api.example.com/data",
+    "application/json",
+    bytes.NewReader([]byte(`{"key": "value"}`)),
+)
+```
+
+**With Configuration Options:**
+
+```go
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTimeout(10*time.Second),
+    httpclient.WithMaxBodySize(5*1024*1024), // 5MB limit
+    httpclient.WithSkipAuthFunc(func(req *http.Request) bool {
+        // Skip authentication for health checks
+        return strings.HasPrefix(req.URL.Path, "/health")
+    }),
+)
+```
+
+**Available Options:**
+
+- `WithTimeout(duration)` - Set request timeout (default: 30s)
+- `WithMaxBodySize(bytes)` - Limit request body size (default: 10MB)
+- `WithTransport(transport)` - Use custom HTTP transport
+- `WithSkipAuthFunc(func)` - Conditionally skip authentication
+- `WithHMACHeaders(sig, ts, nonce)` - Custom HMAC header names
+- `WithHeaderName(name)` - Custom header for simple mode
+
+**See full examples:**
+
+- [`_example/05-roundtripper-client`](_example/05-roundtripper-client/) - Basic automatic authentication
+- [`_example/06-options-showcase`](_example/06-options-showcase/) - All configuration options
+- [`_example/07-transport-chaining`](_example/07-transport-chaining/) - Advanced transport composition
+
 ## Features
 
+- **Automatic Authentication**: RoundTripper-based client signs requests automatically
+- **Flexible Configuration**: Option Pattern for easy customization (timeout, body limits, etc.)
 - **Multiple Authentication Strategies**: Choose between none, simple, or HMAC modes
 - **Cryptographic Security**: HMAC-SHA256 signatures with constant-time comparison
 - **Replay Attack Protection**: Timestamp validation prevents reuse of old requests
 - **Query Parameter Security**: Include URL parameters in signature to prevent tampering
 - **Request Integrity**: Signature covers method, path, query, and body
 - **Body Preservation**: Request body is restored after verification for downstream handlers
+- **Transport Chaining**: Compatible with logging, metrics, and custom transports
+- **Conditional Authentication**: Skip auth for specific endpoints (e.g., health checks)
+- **Memory Safety**: Built-in body size limits prevent OOM attacks
 - **Customizable Headers**: Override default header names to match your API conventions
 - **Dual Purpose**: Same package for client signing and server verification
+- **Two API Styles**: Automatic (RoundTripper) or manual (AddAuthHeaders)
 - **Zero Config Defaults**: Sensible defaults with optional customization
-- **Production Ready**: Comprehensive tests, linting, and security scanning
+- **Production Ready**: 90%+ test coverage, comprehensive linting, and security scanning
 
 ## Security
 
@@ -367,13 +459,51 @@ const (
 
 ### Functions
 
+#### NewAuthClient (Recommended)
+
+```go
+func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client
+```
+
+Creates an HTTP client with automatic authentication. All requests are signed automatically based on the configured mode.
+
+**Parameters:**
+
+- `mode`: Authentication mode (`AuthModeNone`, `AuthModeSimple`, or `AuthModeHMAC`)
+- `secret`: Shared secret key
+- `opts`: Optional configuration (timeout, body limits, custom headers, etc.)
+
+**Returns:** Configured `*http.Client` with automatic authentication
+
+**Example:**
+
+```go
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTimeout(10*time.Second),
+    httpclient.WithMaxBodySize(5*1024*1024),
+)
+```
+
+#### Client Options
+
+Configure `NewAuthClient` behavior:
+
+- `WithTimeout(duration)` - Request timeout (default: 30s)
+- `WithMaxBodySize(bytes)` - Max body size (default: 10MB, set 0 for unlimited)
+- `WithTransport(transport)` - Custom base transport
+- `WithSkipAuthFunc(func(*http.Request) bool)` - Skip auth conditionally
+- `WithHMACHeaders(sig, ts, nonce string)` - Custom HMAC header names
+- `WithHeaderName(name string)` - Custom header for simple mode
+
 #### NewAuthConfig
 
 ```go
 func NewAuthConfig(mode, secret string) *AuthConfig
 ```
 
-Creates a new `AuthConfig` with default header names.
+Creates a new `AuthConfig` with default header names. Use this for manual authentication or server-side verification.
 
 **Parameters:**
 
@@ -388,7 +518,7 @@ Creates a new `AuthConfig` with default header names.
 func (c *AuthConfig) AddAuthHeaders(req *http.Request, body []byte) error
 ```
 
-Adds authentication headers to an HTTP request based on configured mode.
+Manually adds authentication headers to an HTTP request. Use this for advanced scenarios like middleware or large file uploads.
 
 **Parameters:**
 
@@ -459,8 +589,10 @@ go tool cover -html=coverage.txt
 
 ```txt
 .
-├── auth.go              # Main authentication implementation
-├── auth_test.go         # Comprehensive test suite
+├── auth.go              # Core authentication implementation
+├── auth_test.go         # Authentication tests
+├── client.go            # RoundTripper-based HTTP client
+├── client_test.go       # Client tests
 ├── go.mod               # Module definition
 ├── Makefile            # Build automation
 ├── .golangci.yml       # Linting configuration
@@ -468,7 +600,10 @@ go tool cover -html=coverage.txt
 │   ├── 01-simple-auth/           # Simple API key authentication
 │   ├── 02-hmac-auth/             # HMAC signature authentication
 │   ├── 03-custom-headers/        # Custom header names
-│   └── 04-server-verification/   # Server-side verification
+│   ├── 04-server-verification/   # Server-side verification
+│   ├── 05-roundtripper-client/   # Automatic authentication
+│   ├── 06-options-showcase/      # Configuration options
+│   └── 07-transport-chaining/    # Transport composition
 └── .github/workflows/  # CI/CD pipelines
     ├── testing.yml     # Multi-platform testing
     ├── security.yml    # Trivy security scanning

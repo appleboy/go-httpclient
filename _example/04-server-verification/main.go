@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"httpclient"
+	"github.com/appleboy/go-httpclient"
 )
 
 func main() {

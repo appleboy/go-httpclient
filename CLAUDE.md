@@ -44,16 +44,31 @@ go tool cover -html=coverage.txt
 
 ### Core Components
 
-**auth.go** (212 lines): Single-file implementation containing:
+**auth.go** (221 lines): Core authentication implementation:
 
 - `AuthConfig`: Main configuration struct with authentication mode, secret, and customizable header names
 - Client-side methods: `AddAuthHeaders()` adds authentication headers to outgoing requests
 - Server-side methods: `VerifyHMACSignature()` validates incoming requests
 - HMAC signature calculation: `calculateHMACSignature()` computes signatures from timestamp + method + full path (including query) + body
 
+**client.go** (~290 lines): RoundTripper-based HTTP client with automatic authentication:
+
+- `NewAuthClient(mode, secret, ...opts)`: Creates http.Client with automatic authentication using Option Pattern
+- `authRoundTripper`: Implements http.RoundTripper interface for transparent request signing
+- Option Pattern functions: `WithTimeout()`, `WithMaxBodySize()`, `WithTransport()`, `WithSkipAuthFunc()`, `WithHMACHeaders()`, `WithHeaderName()`
+- Automatic body reading and restoration: Reads request body for signature calculation, then restores it for the underlying transport
+- Security features: Body size limits (default 10MB), conditional authentication skipping, configurable timeouts
+
 ### Authentication Flow
 
-**Client-side signing:**
+**Client-side signing (automatic with NewAuthClient):**
+
+1. Create authenticated client: `client := NewAuthClient(mode, secret, ...opts)`
+2. Make requests normally: `client.Get(url)` or `client.Post(url, contentType, body)`
+3. Authentication headers are automatically added by the RoundTripper
+4. Body is automatically read, signed, and restored
+
+**Client-side signing (manual with AddAuthHeaders):**
 
 1. Create `AuthConfig` with mode and secret
 2. Call `AddAuthHeaders(req, body)` before sending request
@@ -81,10 +96,12 @@ Query parameters are intentionally included in signature to prevent parameter in
 
 ## Testing Requirements
 
-- Comprehensive test coverage in `auth_test.go` (560+ lines)
-- Tests cover all three modes, custom headers, signature verification, timestamp expiration, query parameter security
+- Comprehensive test coverage in `auth_test.go` (560+ lines) and `client_test.go` (~660 lines)
+- `auth_test.go`: Tests all three modes, custom headers, signature verification, timestamp expiration, query parameter security
+- `client_test.go`: Tests RoundTripper implementation, Option Pattern, body preservation, transport chaining, error handling
+- Integration tests use `httptest.NewServer` for end-to-end validation
 - All tests must pass on both Ubuntu and macOS
-- Maintain coverage above 80%
+- Current coverage: >90% (exceeds 80% minimum requirement)
 
 ## Linting Configuration
 

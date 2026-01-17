@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	"httpclient"
+	"github.com/appleboy/go-httpclient"
 )
 
 func main() {
