@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"httpclient"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/appleboy/go-httpclient"
 )
 
 func main() {

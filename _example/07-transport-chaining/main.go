@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"httpclient"
 	"net/http"
 	"time"
+
+	"github.com/appleboy/go-httpclient"
 )
 
 // loggingTransport is a custom transport that logs requests

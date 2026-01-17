@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"httpclient"
 	"io"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/appleboy/go-httpclient"
 )
 
 func main() {

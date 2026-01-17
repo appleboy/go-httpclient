@@ -3,9 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"httpclient"
 	"log"
 	"net/http"
+
+	"github.com/appleboy/go-httpclient"
 )
 
 func main() {
