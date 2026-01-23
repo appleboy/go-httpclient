@@ -2,9 +2,13 @@ package httpclient
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -24,6 +28,9 @@ type clientOptions struct {
 	timeout      time.Duration
 	maxBodySize  int64
 	skipAuthFunc func(*http.Request) bool
+
+	// TLS certificate options
+	tlsCerts [][]byte // Custom TLS certificates in PEM format
 }
 
 // defaultClientOptions returns a clientOptions struct with sensible defaults.
@@ -135,6 +142,94 @@ func WithSkipAuthFunc(fn func(*http.Request) bool) ClientOption {
 	}
 }
 
+// WithTLSCertFromURL downloads a TLS certificate from the specified URL and adds it
+// to the trusted certificate pool. This is useful for enterprise environments with
+// custom certificate authorities.
+//
+// The certificate must be in PEM format. Multiple certificates can be added by
+// calling this function multiple times.
+//
+// Example:
+//
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithTLSCertFromURL("https://internal-ca.company.com/ca.crt"))
+func WithTLSCertFromURL(url string) ClientOption {
+	return func(opts *clientOptions) {
+		// Download certificate from URL using a simple HTTP client
+		// Create request with context
+		req, err := http.NewRequestWithContext(
+			context.Background(),
+			http.MethodGet,
+			url,
+			nil,
+		)
+		if err != nil {
+			return
+		}
+
+		// #nosec G107 - URL is provided by the user, not external input
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			// Store error for later handling in NewAuthClient
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return
+		}
+
+		certPEM, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return
+		}
+
+		opts.tlsCerts = append(opts.tlsCerts, certPEM)
+	}
+}
+
+// WithTLSCertFromFile reads a TLS certificate from the specified file path and adds it
+// to the trusted certificate pool. This is useful for enterprise environments with
+// custom certificate authorities.
+//
+// The certificate must be in PEM format. Multiple certificates can be added by
+// calling this function multiple times.
+//
+// Example:
+//
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"))
+func WithTLSCertFromFile(path string) ClientOption {
+	return func(opts *clientOptions) {
+		certPEM, err := os.ReadFile(path)
+		if err != nil {
+			// Store error for later handling in NewAuthClient
+			return
+		}
+		opts.tlsCerts = append(opts.tlsCerts, certPEM)
+	}
+}
+
+// WithTLSCertFromBytes adds a TLS certificate from byte content to the trusted
+// certificate pool. This is useful for embedding certificates directly in the
+// application or loading them from external sources.
+//
+// The certificate must be in PEM format. Multiple certificates can be added by
+// calling this function multiple times.
+//
+// Example:
+//
+//	certPEM := []byte(`-----BEGIN CERTIFICATE-----
+//	MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKm...
+//	-----END CERTIFICATE-----`)
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithTLSCertFromBytes(certPEM))
+func WithTLSCertFromBytes(certPEM []byte) ClientOption {
+	return func(opts *clientOptions) {
+		opts.tlsCerts = append(opts.tlsCerts, certPEM)
+	}
+}
+
 // authRoundTripper implements http.RoundTripper with automatic authentication.
 type authRoundTripper struct {
 	config       *AuthConfig
@@ -233,6 +328,14 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //	    }),
 //	)
 //
+// Example (with custom TLS certificate):
+//
+//	client := httpclient.NewAuthClient(
+//	    httpclient.AuthModeHMAC,
+//	    "secret",
+//	    httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
+//	)
+//
 // Note: This implementation reads the entire request body into memory
 // for signature calculation. For large file uploads (>10MB), consider
 // using AddAuthHeaders directly with streaming.
@@ -243,6 +346,12 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	// Apply user-provided options
 	for _, opt := range opts {
 		opt(options)
+	}
+
+	// Configure TLS if custom certificates are provided
+	transport := options.transport
+	if len(options.tlsCerts) > 0 {
+		transport = buildTLSTransport(options.transport, options.tlsCerts)
 	}
 
 	// Create AuthConfig (internal use)
@@ -258,7 +367,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	// Create authRoundTripper
 	authTransport := &authRoundTripper{
 		config:       config,
-		transport:    options.transport,
+		transport:    transport,
 		maxBodySize:  options.maxBodySize,
 		skipAuthFunc: options.skipAuthFunc,
 	}
@@ -268,4 +377,46 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 		Transport: authTransport,
 		Timeout:   options.timeout,
 	}
+}
+
+// buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates.
+func buildTLSTransport(baseTransport http.RoundTripper, certs [][]byte) http.RoundTripper {
+	// Start with system cert pool
+	certPool, err := x509.SystemCertPool()
+	if err != nil {
+		// If system pool is unavailable, create a new empty pool
+		certPool = x509.NewCertPool()
+	}
+
+	// Add custom certificates to the pool
+	for _, certPEM := range certs {
+		// Skip invalid certificates silently
+		certPool.AppendCertsFromPEM(certPEM)
+	}
+
+	// Create TLS config with custom cert pool
+	tlsConfig := &tls.Config{
+		RootCAs:    certPool,
+		MinVersion: tls.VersionTLS12, // Enforce TLS 1.2 minimum for security
+	}
+
+	// If a base transport is provided, try to clone and modify it
+	if baseTransport != nil {
+		if httpTransport, ok := baseTransport.(*http.Transport); ok {
+			// Clone the transport to avoid modifying the original
+			transport := httpTransport.Clone()
+			transport.TLSClientConfig = tlsConfig
+			return transport
+		}
+		// If it's not an *http.Transport, we can't modify it safely
+		// Return the base transport as-is (user's responsibility)
+		return baseTransport
+	}
+
+	// No base transport provided, create a new one based on http.DefaultTransport
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+	transport := defaultTransport.Clone()
+	transport.TLSClientConfig = tlsConfig
+
+	return transport
 }

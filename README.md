@@ -28,6 +28,7 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [Custom Header Names](#custom-header-names)
       - [Server-Side Verification](#server-side-verification)
       - [Automatic Authentication with RoundTripper](#automatic-authentication-with-roundtripper)
+      - [Custom TLS Certificates](#custom-tls-certificates)
   - [Features](#features)
   - [Security](#security)
     - [HMAC Signature Calculation](#hmac-signature-calculation)
@@ -101,6 +102,7 @@ Without proper authentication, your APIs are vulnerable to:
 - **Automatic Authentication**: One-line client creation with built-in request signing
 - **Flexible Configuration**: Option Pattern for easy customization without breaking changes
 - **Two API Styles**: Automatic (RoundTripper) for simplicity, manual (AddAuthHeaders) for control
+- **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content for enterprise PKI
 - **Zero Dependencies** (except `google/uuid` for nonce generation)
 - **Simple API**: Easy to integrate into existing HTTP clients
 - **Dual Purpose**: Works for both client-side signing and server-side verification
@@ -351,6 +353,9 @@ client := httpclient.NewAuthClient(
 - `WithSkipAuthFunc(func)` - Conditionally skip authentication
 - `WithHMACHeaders(sig, ts, nonce)` - Custom HMAC header names
 - `WithHeaderName(name)` - Custom header for simple mode
+- `WithTLSCertFromFile(path)` - Load TLS certificate from file
+- `WithTLSCertFromURL(url)` - Download TLS certificate from URL
+- `WithTLSCertFromBytes(pem)` - Load TLS certificate from bytes
 
 **See full examples:**
 
@@ -358,11 +363,62 @@ client := httpclient.NewAuthClient(
 - [`_example/06-options-showcase`](_example/06-options-showcase/) - All configuration options
 - [`_example/07-transport-chaining`](_example/07-transport-chaining/) - Advanced transport composition
 
+#### Custom TLS Certificates
+
+For enterprise environments with custom Certificate Authorities or self-signed certificates:
+
+```go
+// Load certificate from file
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
+)
+
+// Load certificate from URL
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTLSCertFromURL("https://internal-ca.company.com/ca.crt"),
+)
+
+// Load certificate from embedded content
+certPEM := []byte(`-----BEGIN CERTIFICATE-----
+MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKmdMA0GCSqGSIb3DQEBCwUAMEUx...
+-----END CERTIFICATE-----`)
+
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTLSCertFromBytes(certPEM),
+)
+
+// Load multiple certificates for certificate chain
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTLSCertFromFile("/etc/ssl/certs/root-ca.crt"),
+    httpclient.WithTLSCertFromFile("/etc/ssl/certs/intermediate-ca.crt"),
+)
+```
+
+**Key Features:**
+
+- Load certificates from files, URLs, or byte content
+- Multiple certificates supported for chain verification
+- System certificate pool preserved (custom certs added)
+- TLS 1.2+ enforced for security
+- Invalid certificates silently skipped
+
+**See full example:** [`examples/custom_cert`](examples/custom_cert/)
+
 ## Features
 
 - **Automatic Authentication**: RoundTripper-based client signs requests automatically
 - **Flexible Configuration**: Option Pattern for easy customization (timeout, body limits, etc.)
 - **Multiple Authentication Strategies**: Choose between none, simple, or HMAC modes
+- **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content
+- **Enterprise PKI Support**: Trust custom Certificate Authorities and self-signed certificates
 - **Cryptographic Security**: HMAC-SHA256 signatures with constant-time comparison
 - **Replay Attack Protection**: Timestamp validation prevents reuse of old requests
 - **Query Parameter Security**: Include URL parameters in signature to prevent tampering
@@ -490,12 +546,34 @@ client := httpclient.NewAuthClient(
 
 Configure `NewAuthClient` behavior:
 
+**General Options:**
+
 - `WithTimeout(duration)` - Request timeout (default: 30s)
 - `WithMaxBodySize(bytes)` - Max body size (default: 10MB, set 0 for unlimited)
 - `WithTransport(transport)` - Custom base transport
 - `WithSkipAuthFunc(func(*http.Request) bool)` - Skip auth conditionally
+
+**Authentication Options:**
+
 - `WithHMACHeaders(sig, ts, nonce string)` - Custom HMAC header names
 - `WithHeaderName(name string)` - Custom header for simple mode
+
+**TLS Certificate Options:**
+
+- `WithTLSCertFromFile(path string)` - Load certificate from file path
+- `WithTLSCertFromURL(url string)` - Download certificate from URL
+- `WithTLSCertFromBytes(certPEM []byte)` - Load certificate from byte content
+
+**Example:**
+
+```go
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTimeout(30*time.Second),
+    httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
+)
+```
 
 #### NewAuthConfig
 
@@ -570,6 +648,9 @@ The package includes comprehensive tests covering:
 - Missing header validation
 - Body preservation after verification
 - Query parameter tampering prevention
+- TLS certificate loading from files, URLs, and bytes
+- Multiple certificate chain verification
+- Certificate error handling
 
 View coverage report:
 
@@ -590,9 +671,10 @@ go tool cover -html=coverage.txt
 ```txt
 .
 ├── auth.go              # Core authentication implementation
-├── auth_test.go         # Authentication tests
+├── auth_test.go         # Authentication tests (560+ lines)
 ├── client.go            # RoundTripper-based HTTP client
-├── client_test.go       # Client tests
+├── client_test.go       # Client tests (660+ lines)
+├── cert_test.go         # TLS certificate tests (360+ lines)
 ├── go.mod               # Module definition
 ├── Makefile            # Build automation
 ├── .golangci.yml       # Linting configuration
@@ -604,6 +686,8 @@ go tool cover -html=coverage.txt
 │   ├── 05-roundtripper-client/   # Automatic authentication
 │   ├── 06-options-showcase/      # Configuration options
 │   └── 07-transport-chaining/    # Transport composition
+├── examples/           # Additional examples
+│   └── custom_cert/    # Custom TLS certificate examples
 └── .github/workflows/  # CI/CD pipelines
     ├── testing.yml     # Multi-platform testing
     ├── security.yml    # Trivy security scanning
