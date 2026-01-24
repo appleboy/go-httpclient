@@ -41,6 +41,8 @@ formatters:
     - gofumpt
     - goimports
     - golines
+    - gci
+    - swaggo
   exclusions:
     generated: lax
     paths:

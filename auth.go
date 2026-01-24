@@ -257,7 +257,7 @@ func (c *AuthConfig) VerifyHMACSignature(
 	// Read body with size limit to prevent DoS attacks
 	limit := options.MaxBodySize
 	if limit < math.MaxInt64 {
-		limit = limit + 1
+		limit++
 	}
 	limitedReader := io.LimitReader(req.Body, limit)
 	body, err := io.ReadAll(limitedReader)
