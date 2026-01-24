@@ -53,8 +53,11 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Create auth config with same secret as client
 		auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret-key")
 
-		// Verify HMAC signature (max age: 5 minutes)
-		if err := auth.VerifyHMACSignature(r, 5*time.Minute); err != nil {
+		// Verify HMAC signature using defaults (5 minutes max age, 10MB max body size)
+		// Or customize with options:
+		//   auth.VerifyHMACSignature(r, httpclient.WithVerifyMaxAge(10*time.Minute))
+		//   auth.VerifyHMACSignature(r, httpclient.WithVerifyMaxBodySize(5*1024*1024))
+		if err := auth.VerifyHMACSignature(r); err != nil {
 			http.Error(w, fmt.Sprintf("Authentication failed: %v", err), http.StatusUnauthorized)
 			fmt.Printf("  ❌ Authentication failed: %v\n", err)
 			return

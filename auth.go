@@ -31,6 +31,37 @@ type AuthConfig struct {
 	NonceHeader     string // Nonce header name for HMAC mode (default: "X-Nonce")
 }
 
+// VerifyOptions holds options for signature verification
+type VerifyOptions struct {
+	MaxAge      time.Duration // Maximum age of request timestamp (default: 5 minutes)
+	MaxBodySize int64         // Maximum request body size in bytes (default: 10MB)
+}
+
+// VerifyOption is a function that configures VerifyOptions
+type VerifyOption func(*VerifyOptions)
+
+// defaultVerifyOptions returns default verification options
+func defaultVerifyOptions() *VerifyOptions {
+	return &VerifyOptions{
+		MaxAge:      5 * time.Minute,
+		MaxBodySize: 10 * 1024 * 1024, // 10MB
+	}
+}
+
+// WithVerifyMaxAge sets the maximum age for request timestamps during verification
+func WithVerifyMaxAge(d time.Duration) VerifyOption {
+	return func(o *VerifyOptions) {
+		o.MaxAge = d
+	}
+}
+
+// WithVerifyMaxBodySize sets the maximum request body size in bytes during verification
+func WithVerifyMaxBodySize(size int64) VerifyOption {
+	return func(o *VerifyOptions) {
+		o.MaxBodySize = size
+	}
+}
+
 // NewAuthConfig creates a new AuthConfig with defaults
 func NewAuthConfig(mode, secret string) *AuthConfig {
 	return &AuthConfig{
@@ -146,9 +177,36 @@ func getFullPath(req *http.Request) string {
 }
 
 // VerifyHMACSignature verifies HMAC signature from request (for server-side validation)
-func (c *AuthConfig) VerifyHMACSignature(req *http.Request, maxAge time.Duration) error {
+// Use WithVerifyMaxAge and WithVerifyMaxBodySize options to customize verification behavior.
+//
+// Example:
+//
+//	// Use defaults (5 minutes, 10MB)
+//	err := auth.VerifyHMACSignature(req)
+//
+//	// Custom max age
+//	err := auth.VerifyHMACSignature(req, WithVerifyMaxAge(10*time.Minute))
+//
+//	// Custom body size limit
+//	err := auth.VerifyHMACSignature(req, WithVerifyMaxBodySize(5*1024*1024))
+//
+//	// Multiple options
+//	err := auth.VerifyHMACSignature(req,
+//	    WithVerifyMaxAge(10*time.Minute),
+//	    WithVerifyMaxBodySize(5*1024*1024),
+//	)
+func (c *AuthConfig) VerifyHMACSignature(
+	req *http.Request,
+	opts ...VerifyOption,
+) error {
 	if c.Secret == "" {
 		return fmt.Errorf("secret is required for HMAC verification")
+	}
+
+	// Apply options
+	options := defaultVerifyOptions()
+	for _, opt := range opts {
+		opt(options)
 	}
 
 	// Get headers
@@ -175,29 +233,30 @@ func (c *AuthConfig) VerifyHMACSignature(req *http.Request, maxAge time.Duration
 		return fmt.Errorf("invalid timestamp: %w", err)
 	}
 
-	// Check timestamp age (default: 5 minutes)
-	if maxAge == 0 {
-		maxAge = 5 * time.Minute
-	}
-
 	requestTime := time.Unix(timestamp, 0)
 	now := time.Now()
 	timeDiff := now.Sub(requestTime)
 
 	// Reject if timestamp is too old
-	if timeDiff > maxAge {
+	if timeDiff > options.MaxAge {
 		return fmt.Errorf("request timestamp expired")
 	}
 
 	// Reject if timestamp is too far in the future (clock skew attack prevention)
-	if timeDiff < -maxAge {
+	if timeDiff < -options.MaxAge {
 		return fmt.Errorf("request timestamp is too far in the future")
 	}
 
-	// Read body
-	body, err := io.ReadAll(req.Body)
+	// Read body with size limit to prevent DoS attacks
+	limitedReader := io.LimitReader(req.Body, options.MaxBodySize+1)
+	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
+	}
+
+	// Check if body exceeded limit
+	if int64(len(body)) > options.MaxBodySize {
+		return fmt.Errorf("request body too large: exceeds %d bytes", options.MaxBodySize)
 	}
 
 	// Restore body for subsequent handlers
