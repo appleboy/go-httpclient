@@ -43,7 +43,7 @@ func defaultClientOptions() *clientOptions {
 		nonceHeader:     "X-Nonce",
 
 		// Client behavior defaults
-		transport:    nil, // Use http.DefaultTransport
+		transport:    nil, // Will use http.DefaultTransport if not specified
 		timeout:      30 * time.Second,
 		maxBodySize:  10 * 1024 * 1024, // 10MB
 		skipAuthFunc: nil,
