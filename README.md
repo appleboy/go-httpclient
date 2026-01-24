@@ -101,8 +101,11 @@ Without proper authentication, your APIs are vulnerable to:
 
 - **Automatic Authentication**: One-line client creation with built-in request signing
 - **Flexible Configuration**: Option Pattern for easy customization without breaking changes
+  - Client options: `WithTimeout`, `WithMaxBodySize`, `WithSkipAuthFunc`, etc.
+  - Verification options: `WithVerifyMaxAge`, `WithVerifyMaxBodySize`
 - **Two API Styles**: Automatic (RoundTripper) for simplicity, manual (AddAuthHeaders) for control
 - **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content for enterprise PKI
+- **DoS Protection**: Configurable body size limits prevent memory exhaustion attacks (default: 10MB)
 - **Zero Dependencies** (except `google/uuid` for nonce generation)
 - **Simple API**: Easy to integrate into existing HTTP clients
 - **Dual Purpose**: Works for both client-side signing and server-side verification
@@ -282,15 +285,15 @@ auth.AddAuthHeaders(req, body)
 
 #### Server-Side Verification
 
-Verify HMAC signatures on the server side:
+Verify HMAC signatures on the server side with flexible options:
 
 ```go
 func authMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret")
 
-        // Verify signature with 5-minute maximum age
-        if err := auth.VerifyHMACSignature(r, 5*time.Minute); err != nil {
+        // Use defaults (5 minutes max age, 10MB max body size)
+        if err := auth.VerifyHMACSignature(r); err != nil {
             http.Error(w, "Authentication failed: "+err.Error(), http.StatusUnauthorized)
             return
         }
@@ -311,6 +314,38 @@ func main() {
     http.ListenAndServe(":8080", authMiddleware(mux))
 }
 ```
+
+**Customize Verification Options:**
+
+```go
+// Strict API endpoint - 2 minute timeout, 1MB limit
+if err := auth.VerifyHMACSignature(r,
+    httpclient.WithVerifyMaxAge(2*time.Minute),
+    httpclient.WithVerifyMaxBodySize(1*1024*1024),
+); err != nil {
+    return err
+}
+
+// File upload endpoint - 10 minute timeout, 50MB limit
+if err := auth.VerifyHMACSignature(r,
+    httpclient.WithVerifyMaxAge(10*time.Minute),
+    httpclient.WithVerifyMaxBodySize(50*1024*1024),
+); err != nil {
+    return err
+}
+
+// Custom max age only (use default 10MB body limit)
+if err := auth.VerifyHMACSignature(r,
+    httpclient.WithVerifyMaxAge(15*time.Minute),
+); err != nil {
+    return err
+}
+```
+
+**Available Verification Options:**
+
+- `WithVerifyMaxAge(duration)` - Maximum age for request timestamps (default: 5 minutes)
+- `WithVerifyMaxBodySize(bytes)` - Maximum request body size to prevent DoS attacks (default: 10MB)
 
 **See full example:** [`_example/04-server-verification`](_example/04-server-verification/)
 
@@ -419,6 +454,8 @@ client := httpclient.NewAuthClient(
 
 - **Automatic Authentication**: RoundTripper-based client signs requests automatically
 - **Flexible Configuration**: Option Pattern for easy customization (timeout, body limits, etc.)
+  - **Client Options**: `WithTimeout`, `WithMaxBodySize`, `WithTransport`, `WithSkipAuthFunc`, etc.
+  - **Verification Options**: `WithVerifyMaxAge`, `WithVerifyMaxBodySize` for per-endpoint control
 - **Multiple Authentication Strategies**: Choose between none, simple, or HMAC modes
 - **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content
 - **Enterprise PKI Support**: Trust custom Certificate Authorities and self-signed certificates
@@ -429,7 +466,10 @@ client := httpclient.NewAuthClient(
 - **Body Preservation**: Request body is restored after verification for downstream handlers
 - **Transport Chaining**: Compatible with logging, metrics, and custom transports
 - **Conditional Authentication**: Skip auth for specific endpoints (e.g., health checks)
-- **Memory Safety**: Built-in body size limits prevent OOM attacks
+- **DoS Protection**: Configurable body size limits prevent memory exhaustion attacks
+  - Default: 10MB limit for verification
+  - Per-endpoint customization: strict APIs (1MB) vs. file uploads (50MB)
+  - Early rejection with `io.LimitReader` for safe, bounded reading
 - **Customizable Headers**: Override default header names to match your API conventions
 - **Dual Purpose**: Same package for client signing and server verification
 - **Two API Styles**: Automatic (RoundTripper) or manual (AddAuthHeaders)
@@ -478,10 +518,23 @@ Signature: HMAC-SHA256("my-secret", message)
    - Uses `hmac.Equal()` to prevent timing attacks
    - Secure against side-channel attacks
 
-5. **Memory Exhaustion Protection**
-   - Request body size limits prevent OOM attacks (default: 10MB)
-   - TLS certificate size limits prevent malicious payloads (maximum: 1MB)
-   - Built-in `io.LimitReader` usage for safe data reading
+5. **Memory Exhaustion Protection (DoS Prevention)**
+   - **Request Body Size Limits**: Configurable per-endpoint (default: 10MB)
+     - Prevents attackers from sending massive payloads
+     - Uses `io.LimitReader` for safe, bounded reading
+     - Returns clear error message when limit exceeded
+   - **TLS Certificate Size Limits**: Maximum 1MB for certificate files
+   - **Fail-Fast Validation**: Early rejection before processing malicious requests
+
+   **Example Configuration:**
+
+   ```go
+   // Strict API: 1MB limit
+   auth.VerifyHMACSignature(req, httpclient.WithVerifyMaxBodySize(1*1024*1024))
+
+   // File upload API: 50MB limit
+   auth.VerifyHMACSignature(req, httpclient.WithVerifyMaxBodySize(50*1024*1024))
+   ```
 
 ### Security Best Practices
 
@@ -616,17 +669,53 @@ Manually adds authentication headers to an HTTP request. Use this for advanced s
 #### VerifyHMACSignature
 
 ```go
-func (c *AuthConfig) VerifyHMACSignature(req *http.Request, maxAge time.Duration) error
+func (c *AuthConfig) VerifyHMACSignature(req *http.Request, opts ...VerifyOption) error
 ```
 
-Verifies HMAC signature from an HTTP request (server-side validation).
+Verifies HMAC signature from an HTTP request (server-side validation). Uses Optional Pattern for flexible configuration.
 
 **Parameters:**
 
 - `req`: HTTP request to verify
-- `maxAge`: Maximum age for timestamp (default: 5 minutes if zero)
+- `opts`: Optional configuration (max age, body size limit)
 
 **Returns:** Error if verification fails or signature is invalid
+
+**Available Options:**
+
+- `WithVerifyMaxAge(duration)` - Maximum age for request timestamps (default: 5 minutes)
+- `WithVerifyMaxBodySize(bytes)` - Maximum request body size to prevent DoS attacks (default: 10MB)
+
+**Examples:**
+
+```go
+// Use defaults (5 minutes, 10MB)
+err := auth.VerifyHMACSignature(req)
+
+// Custom max age only
+err := auth.VerifyHMACSignature(req,
+    httpclient.WithVerifyMaxAge(10*time.Minute),
+)
+
+// Custom body size limit only
+err := auth.VerifyHMACSignature(req,
+    httpclient.WithVerifyMaxBodySize(5*1024*1024),
+)
+
+// Combine multiple options
+err := auth.VerifyHMACSignature(req,
+    httpclient.WithVerifyMaxAge(10*time.Minute),
+    httpclient.WithVerifyMaxBodySize(50*1024*1024),
+)
+```
+
+**Security Features:**
+
+- **Body Size Limit**: Prevents memory exhaustion DoS attacks (default: 10MB)
+- **Timestamp Validation**: Rejects requests older than max age (default: 5 minutes)
+- **Clock Skew Protection**: Rejects requests with future timestamps beyond max age
+- **Constant-Time Comparison**: Uses `hmac.Equal()` to prevent timing attacks
+- **Body Preservation**: Request body is restored for subsequent handlers
 
 ## Testing
 
@@ -656,9 +745,19 @@ The package includes comprehensive tests covering:
 - Missing header validation
 - Body preservation after verification
 - Query parameter tampering prevention
+- **Body size limit protection** (new)
+  - Requests within limit accepted
+  - Requests exceeding limit rejected
+  - Exact limit boundary testing
+  - Default 10MB limit validation
+  - Custom size limit configuration
+  - Multiple options combination
 - TLS certificate loading from files, URLs, and bytes
 - Multiple certificate chain verification
 - Certificate error handling
+- Optional Pattern API usage
+
+**Coverage:** 90.1% of statements
 
 View coverage report:
 
