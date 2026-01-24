@@ -672,7 +672,7 @@ Manually adds authentication headers to an HTTP request. Use this for advanced s
 func (c *AuthConfig) VerifyHMACSignature(req *http.Request, opts ...VerifyOption) error
 ```
 
-Verifies HMAC signature from an HTTP request (server-side validation). Uses Optional Pattern for flexible configuration.
+Verifies HMAC signature from an HTTP request (server-side validation). Uses the Options Pattern for flexible configuration.
 
 **Parameters:**
 
@@ -755,7 +755,7 @@ The package includes comprehensive tests covering:
 - TLS certificate loading from files, URLs, and bytes
 - Multiple certificate chain verification
 - Certificate error handling
-- Optional Pattern API usage
+- Options Pattern API usage
 
 **Coverage:** 90.1% of statements
 

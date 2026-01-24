@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -51,6 +52,10 @@ func defaultVerifyOptions() *VerifyOptions {
 // WithVerifyMaxAge sets the maximum age for request timestamps during verification
 func WithVerifyMaxAge(d time.Duration) VerifyOption {
 	return func(o *VerifyOptions) {
+		if d <= 0 {
+			// Ignore non-positive values to avoid disabling verification unintentionally.
+			return
+		}
 		o.MaxAge = d
 	}
 }
@@ -58,7 +63,9 @@ func WithVerifyMaxAge(d time.Duration) VerifyOption {
 // WithVerifyMaxBodySize sets the maximum request body size in bytes during verification
 func WithVerifyMaxBodySize(size int64) VerifyOption {
 	return func(o *VerifyOptions) {
-		o.MaxBodySize = size
+		if size > 0 {
+			o.MaxBodySize = size
+		}
 	}
 }
 
@@ -248,7 +255,11 @@ func (c *AuthConfig) VerifyHMACSignature(
 	}
 
 	// Read body with size limit to prevent DoS attacks
-	limitedReader := io.LimitReader(req.Body, options.MaxBodySize+1)
+	limit := options.MaxBodySize
+	if limit < math.MaxInt64 {
+		limit = limit + 1
+	}
+	limitedReader := io.LimitReader(req.Body, limit)
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return fmt.Errorf("failed to read body: %w", err)
