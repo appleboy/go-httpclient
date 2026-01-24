@@ -8,12 +8,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -369,32 +371,36 @@ func TestTLSCertWithCustomTransport(t *testing.T) {
 
 // TestTLSCertFromFile_NonExistent tests error handling for non-existent file
 func TestTLSCertFromFile_NonExistent(t *testing.T) {
-	// Create client with non-existent certificate file
-	client := NewAuthClient(
+	// Creating client with non-existent file should panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic when reading non-existent certificate file")
+		}
+	}()
+
+	// This should panic due to file not found error
+	_ = NewAuthClient(
 		AuthModeNone,
 		"",
 		WithTLSCertFromFile("/non/existent/path/cert.pem"),
 	)
-
-	// The client should be created successfully (errors are silently ignored)
-	if client == nil {
-		t.Fatal("Expected non-nil client")
-	}
 }
 
 // TestTLSCertFromURL_InvalidURL tests error handling for invalid URL
 func TestTLSCertFromURL_InvalidURL(t *testing.T) {
-	// Create client with invalid URL
-	client := NewAuthClient(
+	// Creating client with invalid URL should panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic when downloading certificate from invalid URL")
+		}
+	}()
+
+	// This should panic due to network error
+	_ = NewAuthClient(
 		AuthModeNone,
 		"",
 		WithTLSCertFromURL("http://invalid-url-that-does-not-exist.local"),
 	)
-
-	// The client should be created successfully (errors are silently ignored)
-	if client == nil {
-		t.Fatal("Expected non-nil client")
-	}
 }
 
 // TestTLSCertFromBytes_Invalid tests handling of invalid certificate data
@@ -410,4 +416,106 @@ func TestTLSCertFromBytes_Invalid(t *testing.T) {
 	if client == nil {
 		t.Fatal("Expected non-nil client")
 	}
+}
+
+// TestTLSCertFromURL_OversizedCertificate tests protection against memory exhaustion
+func TestTLSCertFromURL_OversizedCertificate(t *testing.T) {
+	// Create a test server that returns a certificate exceeding 1MB
+	oversizedData := make([]byte, 2*1024*1024) // 2MB
+	for i := range oversizedData {
+		oversizedData[i] = 'A'
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(oversizedData)
+	}))
+	defer server.Close()
+
+	// Creating client with oversized certificate should panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic when certificate exceeds maximum size")
+		} else {
+			// Verify the panic message mentions the size limit
+			panicMsg := fmt.Sprintf("%v", r)
+			if !strings.Contains(panicMsg, "exceeds maximum size") {
+				t.Errorf("Expected panic message about size limit, got: %s", panicMsg)
+			}
+		}
+	}()
+
+	// This should panic due to size limit
+	_ = NewAuthClient(
+		AuthModeNone,
+		"",
+		WithTLSCertFromURL(server.URL),
+	)
+}
+
+// TestTLSCertFromFile_OversizedCertificate tests file size protection
+func TestTLSCertFromFile_OversizedCertificate(t *testing.T) {
+	// Create a temporary oversized certificate file
+	tmpFile, err := os.CreateTemp("", "oversized-cert-*.pem")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write 2MB of data
+	oversizedData := make([]byte, 2*1024*1024)
+	for i := range oversizedData {
+		oversizedData[i] = 'A'
+	}
+	if _, err := tmpFile.Write(oversizedData); err != nil {
+		t.Fatalf("Failed to write temp file: %v", err)
+	}
+	_ = tmpFile.Close()
+
+	// Creating client with oversized certificate should panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic when certificate file exceeds maximum size")
+		} else {
+			panicMsg := fmt.Sprintf("%v", r)
+			if !strings.Contains(panicMsg, "exceeds maximum size") {
+				t.Errorf("Expected panic message about size limit, got: %s", panicMsg)
+			}
+		}
+	}()
+
+	// This should panic due to size limit
+	_ = NewAuthClient(
+		AuthModeNone,
+		"",
+		WithTLSCertFromFile(tmpFile.Name()),
+	)
+}
+
+// TestTLSCertFromBytes_OversizedCertificate tests byte slice size validation
+func TestTLSCertFromBytes_OversizedCertificate(t *testing.T) {
+	// Create oversized certificate data (2MB)
+	oversizedData := make([]byte, 2*1024*1024)
+	for i := range oversizedData {
+		oversizedData[i] = 'A'
+	}
+
+	// Creating client with oversized certificate should panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected panic when certificate bytes exceed maximum size")
+		} else {
+			panicMsg := fmt.Sprintf("%v", r)
+			if !strings.Contains(panicMsg, "exceeds maximum size") {
+				t.Errorf("Expected panic message about size limit, got: %s", panicMsg)
+			}
+		}
+	}()
+
+	// This should panic due to size limit
+	_ = NewAuthClient(
+		AuthModeNone,
+		"",
+		WithTLSCertFromBytes(oversizedData),
+	)
 }

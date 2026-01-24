@@ -408,7 +408,8 @@ client := httpclient.NewAuthClient(
 - Multiple certificates supported for chain verification
 - System certificate pool preserved (custom certs added)
 - TLS 1.2+ enforced for security
-- Invalid certificates silently skipped
+- 1MB size limit prevents memory exhaustion attacks
+- Configuration errors cause immediate panic for fail-fast behavior
 
 **See full example:** [`examples/custom_cert`](examples/custom_cert/)
 
@@ -474,6 +475,11 @@ Signature: HMAC-SHA256("my-secret", message)
 4. **Constant-Time Comparison**
    - Uses `hmac.Equal()` to prevent timing attacks
    - Secure against side-channel attacks
+
+5. **Memory Exhaustion Protection**
+   - Request body size limits prevent OOM attacks (default: 10MB)
+   - TLS certificate size limits prevent malicious payloads (maximum: 1MB)
+   - Built-in `io.LimitReader` usage for safe data reading
 
 ### Security Best Practices
 

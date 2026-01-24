@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+const (
+	// maxCertSize defines the maximum allowed size for a TLS certificate file.
+	// This prevents memory exhaustion attacks when downloading certificates from URLs.
+	// A typical certificate is 1-2KB; 1MB provides ample room for certificate chains.
+	maxCertSize = 1 * 1024 * 1024 // 1MB
+)
+
 // ClientOption is a function type for configuring the HTTP client.
 type ClientOption func(*clientOptions)
 
@@ -31,6 +38,9 @@ type clientOptions struct {
 
 	// TLS certificate options
 	tlsCerts [][]byte // Custom TLS certificates in PEM format
+
+	// Error tracking for option configuration
+	err error
 }
 
 // defaultClientOptions returns a clientOptions struct with sensible defaults.
@@ -193,16 +203,42 @@ func WithTLSCertFromURL(url string) ClientOption {
 		resp, err := secureClient.Do(req)
 		if err != nil {
 			// Store error for later handling in NewAuthClient
+			opts.err = fmt.Errorf("failed to download certificate from %s: %w", url, err)
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			opts.err = fmt.Errorf(
+				"failed to download certificate from %s: HTTP %d",
+				url,
+				resp.StatusCode,
+			)
 			return
 		}
 
-		certPEM, err := io.ReadAll(resp.Body)
+		// Use LimitReader to prevent memory exhaustion from malicious servers
+		// that might send extremely large responses
+		limitedReader := io.LimitReader(resp.Body, maxCertSize+1)
+		certPEM, err := io.ReadAll(limitedReader)
 		if err != nil {
+			opts.err = fmt.Errorf(
+				"failed to read certificate from %s (max %d bytes): %w",
+				url,
+				maxCertSize,
+				err,
+			)
+			return
+		}
+
+		// Check if the certificate exceeds the maximum allowed size
+		if int64(len(certPEM)) > maxCertSize {
+			opts.err = fmt.Errorf(
+				"certificate from %s exceeds maximum size of %d bytes (got %d bytes)",
+				url,
+				maxCertSize,
+				len(certPEM),
+			)
 			return
 		}
 
@@ -226,8 +262,21 @@ func WithTLSCertFromFile(path string) ClientOption {
 		certPEM, err := os.ReadFile(path)
 		if err != nil {
 			// Store error for later handling in NewAuthClient
+			opts.err = fmt.Errorf("failed to read certificate from file %s: %w", path, err)
 			return
 		}
+
+		// Check if the certificate file exceeds the maximum allowed size
+		if int64(len(certPEM)) > maxCertSize {
+			opts.err = fmt.Errorf(
+				"certificate file %s exceeds maximum size of %d bytes (got %d bytes)",
+				path,
+				maxCertSize,
+				len(certPEM),
+			)
+			return
+		}
+
 		opts.tlsCerts = append(opts.tlsCerts, certPEM)
 	}
 }
@@ -248,6 +297,16 @@ func WithTLSCertFromFile(path string) ClientOption {
 //	    WithTLSCertFromBytes(certPEM))
 func WithTLSCertFromBytes(certPEM []byte) ClientOption {
 	return func(opts *clientOptions) {
+		// Check if the certificate exceeds the maximum allowed size
+		if int64(len(certPEM)) > maxCertSize {
+			opts.err = fmt.Errorf(
+				"certificate exceeds maximum size of %d bytes (got %d bytes)",
+				maxCertSize,
+				len(certPEM),
+			)
+			return
+		}
+
 		opts.tlsCerts = append(opts.tlsCerts, certPEM)
 	}
 }
@@ -369,6 +428,11 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	// Apply user-provided options
 	for _, opt := range opts {
 		opt(options)
+	}
+
+	// Check if any option encountered an error during configuration
+	if options.err != nil {
+		panic(fmt.Sprintf("httpclient: failed to configure client: %v", options.err))
 	}
 
 	// Configure TLS if custom certificates are provided
