@@ -337,8 +337,9 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //	)
 //
 // Note: This implementation reads the entire request body into memory
-// for signature calculation. For large file uploads (>10MB), consider
-// using AddAuthHeaders directly with streaming.
+// for signature calculation. For large file uploads (>10MB), you should
+// implement custom streaming or chunked authentication (e.g., by using
+// AddAuthHeaders as a building block) instead of relying on full buffering.
 func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	// Apply default configuration
 	options := defaultClientOptions()
