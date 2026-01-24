@@ -18,12 +18,14 @@ func main() {
 		httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
 	)
 
-	// Example 2: Load certificate from URL
+	// Example 2: Load certificate from URL (with context for timeout control)
+	certCtx, certCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	client2 := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"your-secret-key",
-		httpclient.WithTLSCertFromURL("https://internal-ca.company.com/ca.crt"),
+		httpclient.WithTLSCertFromURL(certCtx, "https://internal-ca.company.com/ca.crt"),
 	)
+	certCancel() // Cancel context after client is created
 
 	// Example 3: Load certificate from byte content (embedded certificate)
 	certPEM := []byte(`-----BEGIN CERTIFICATE-----

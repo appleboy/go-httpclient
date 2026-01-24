@@ -228,7 +228,7 @@ func TestWithTLSCertFromURL(t *testing.T) {
 	client := NewAuthClient(
 		AuthModeNone,
 		"",
-		WithTLSCertFromURL(certServer.URL),
+		WithTLSCertFromURL(context.Background(), certServer.URL),
 	)
 
 	// Make request
@@ -399,7 +399,7 @@ func TestTLSCertFromURL_InvalidURL(t *testing.T) {
 	_ = NewAuthClient(
 		AuthModeNone,
 		"",
-		WithTLSCertFromURL("http://invalid-url-that-does-not-exist.local"),
+		WithTLSCertFromURL(context.Background(), "http://invalid-url-that-does-not-exist.local"),
 	)
 }
 
@@ -449,7 +449,7 @@ func TestTLSCertFromURL_OversizedCertificate(t *testing.T) {
 	_ = NewAuthClient(
 		AuthModeNone,
 		"",
-		WithTLSCertFromURL(server.URL),
+		WithTLSCertFromURL(context.Background(), server.URL),
 	)
 }
 

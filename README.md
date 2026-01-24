@@ -354,7 +354,7 @@ client := httpclient.NewAuthClient(
 - `WithHMACHeaders(sig, ts, nonce)` - Custom HMAC header names
 - `WithHeaderName(name)` - Custom header for simple mode
 - `WithTLSCertFromFile(path)` - Load TLS certificate from file
-- `WithTLSCertFromURL(url)` - Download TLS certificate from URL
+- `WithTLSCertFromURL(ctx, url)` - Download TLS certificate from URL (with context for timeout control)
 - `WithTLSCertFromBytes(pem)` - Load TLS certificate from bytes
 
 **See full examples:**
@@ -375,11 +375,13 @@ client := httpclient.NewAuthClient(
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
 )
 
-// Load certificate from URL
+// Load certificate from URL with timeout control
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
 client := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
-    httpclient.WithTLSCertFromURL("https://internal-ca.company.com/ca.crt"),
+    httpclient.WithTLSCertFromURL(ctx, "https://internal-ca.company.com/ca.crt"),
 )
 
 // Load certificate from embedded content
@@ -567,7 +569,7 @@ Configure `NewAuthClient` behavior:
 **TLS Certificate Options:**
 
 - `WithTLSCertFromFile(path string)` - Load certificate from file path
-- `WithTLSCertFromURL(url string)` - Download certificate from URL
+- `WithTLSCertFromURL(ctx context.Context, url string)` - Download certificate from URL with context for timeout control
 - `WithTLSCertFromBytes(certPEM []byte)` - Load certificate from byte content
 
 **Example:**

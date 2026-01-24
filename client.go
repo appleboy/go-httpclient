@@ -164,9 +164,11 @@ func WithSkipAuthFunc(fn func(*http.Request) bool) ClientOption {
 //
 // Example:
 //
+//	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//	defer cancel()
 //	client := NewAuthClient(AuthModeHMAC, "secret",
-//	    WithTLSCertFromURL("https://internal-ca.company.com/ca.crt"))
-func WithTLSCertFromURL(url string) ClientOption {
+//	    WithTLSCertFromURL(ctx, "https://internal-ca.company.com/ca.crt"))
+func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 	return func(opts *clientOptions) {
 		// Create a secure HTTP client using system certificate pool
 		// to verify the certificate server's identity (prevents MITM)
@@ -188,14 +190,15 @@ func WithTLSCertFromURL(url string) ClientOption {
 			Timeout: 30 * time.Second,
 		}
 
-		// Create request with context
+		// Create request with provided context
 		req, err := http.NewRequestWithContext(
-			context.Background(),
+			ctx,
 			http.MethodGet,
 			url,
 			nil,
 		)
 		if err != nil {
+			opts.err = fmt.Errorf("failed to create request for %s: %w", url, err)
 			return
 		}
 
@@ -411,10 +414,12 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //
 // Example (with custom TLS certificate):
 //
+//	ctx := context.Background()
 //	client := httpclient.NewAuthClient(
 //	    httpclient.AuthModeHMAC,
 //	    "secret",
 //	    httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
+//	    httpclient.WithTLSCertFromURL(ctx, "https://ca.example.com/cert.pem"),
 //	)
 //
 // Note: This implementation reads the entire request body into memory
