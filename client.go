@@ -149,13 +149,35 @@ func WithSkipAuthFunc(fn func(*http.Request) bool) ClientOption {
 // The certificate must be in PEM format. Multiple certificates can be added by
 // calling this function multiple times.
 //
+// Security: The download uses system certificate pool for TLS verification to prevent
+// MITM attacks during certificate retrieval. The connection enforces TLS 1.2 minimum.
+//
 // Example:
 //
 //	client := NewAuthClient(AuthModeHMAC, "secret",
 //	    WithTLSCertFromURL("https://internal-ca.company.com/ca.crt"))
 func WithTLSCertFromURL(url string) ClientOption {
 	return func(opts *clientOptions) {
-		// Download certificate from URL using a simple HTTP client
+		// Create a secure HTTP client using system certificate pool
+		// to verify the certificate server's identity (prevents MITM)
+		systemCerts, err := x509.SystemCertPool()
+		if err != nil || systemCerts == nil {
+			// Fallback to empty pool if system pool is unavailable
+			systemCerts = x509.NewCertPool()
+		}
+
+		tlsConfig := &tls.Config{
+			RootCAs:    systemCerts,
+			MinVersion: tls.VersionTLS12,
+		}
+
+		secureClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: tlsConfig,
+			},
+			Timeout: 30 * time.Second,
+		}
+
 		// Create request with context
 		req, err := http.NewRequestWithContext(
 			context.Background(),
@@ -168,7 +190,7 @@ func WithTLSCertFromURL(url string) ClientOption {
 		}
 
 		// #nosec G107 - URL is provided by the user, not external input
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := secureClient.Do(req)
 		if err != nil {
 			// Store error for later handling in NewAuthClient
 			return
