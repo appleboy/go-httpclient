@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`go-httpclient` is a lightweight Go package for HTTP request authentication. It provides three authentication modes: none (public endpoints), simple (API secret in header), and HMAC-SHA256 (cryptographic signatures with replay attack prevention). The package serves dual purposes: client-side request signing and server-side request verification.
+`go-httpclient` is a lightweight Go package for HTTP request authentication. It provides four authentication modes: none (public endpoints), simple (API secret in header), HMAC-SHA256 (cryptographic signatures with replay attack prevention), and GitHub (webhook-compatible HMAC-SHA256). The package serves dual purposes: client-side request signing and server-side request verification.
 
 ## Go Version
 
@@ -81,8 +81,10 @@ go tool cover -html=coverage.txt
    - `AuthModeNone`: No verification performed
    - `AuthModeSimple`: Verifies API secret in header
    - `AuthModeHMAC`: Verifies signature, timestamp, and body
-4. For HMAC mode: Body is read and restored to `req.Body` for downstream handlers
+   - `AuthModeGitHub`: Verifies GitHub-style signature and body
+4. For HMAC/GitHub modes: Body is read and restored to `req.Body` for downstream handlers
 5. For HMAC mode: Timestamp checked against options (default: 5 minutes)
+6. For GitHub mode: No timestamp validation (webhook compatibility)
 
 ### HMAC Signature Components
 
@@ -97,6 +99,49 @@ Example: `"1704067200POST/api/users?role=admin{\"name\":\"John\"}"`
 
 Query parameters are intentionally included in signature to prevent parameter injection attacks.
 
+### GitHub Webhook-Style Mode
+
+**Purpose**: Compatible with GitHub webhook signature format and other webhook providers using similar HMAC-SHA256 patterns.
+
+**Signature Format**:
+
+```txt
+message = body
+signature = "sha256=" + HMAC-SHA256(secret, body)
+```
+
+**Key Differences from HMAC Mode**:
+
+- Signature includes ONLY the request body
+- Signature has "sha256=" prefix
+- Single header (X-Hub-Signature-256) instead of three
+- No timestamp validation (no replay attack protection)
+
+**Client-side signing (automatic)**:
+
+```go
+client := httpclient.NewAuthClient(httpclient.AuthModeGitHub, secret)
+client.Post(url, contentType, body)
+// Adds header: X-Hub-Signature-256: sha256=<hex_digest>
+```
+
+**Server-side verification**:
+
+```go
+auth := httpclient.NewAuthConfig(httpclient.AuthModeGitHub, secret)
+if err := auth.Verify(req); err != nil {
+    // Signature invalid
+}
+```
+
+**Security Limitations**:
+
+- ⚠️ No timestamp validation (GitHub webhooks don't provide timestamps)
+- ⚠️ Vulnerable to replay attacks without additional safeguards
+- ✅ Mitigation: Use HTTPS + regular secret rotation
+
+**Python Compatibility**: Fully compatible with the standard Python GitHub webhook verification pattern.
+
 ## Verification API Design
 
 The library provides a unified `Verify()` method for server-side authentication validation:
@@ -109,6 +154,7 @@ The library provides a unified `Verify()` method for server-side authentication 
 
 - `verifySimpleAuth(req *http.Request) error` - Validates Simple mode authentication
 - `verifyHMACSignature(req *http.Request, opts ...VerifyOption) error` - Validates HMAC mode authentication
+- `verifyGitHubSignature(req *http.Request, opts ...VerifyOption) error` - Validates GitHub mode authentication
 
 **Design Rationale:**
 
@@ -119,8 +165,8 @@ The library provides a unified `Verify()` method for server-side authentication 
 
 ## Testing Requirements
 
-- Comprehensive test coverage in `auth_test.go` (1000+ lines) and `client_test.go` (~660 lines)
-- `auth_test.go`: Tests all three modes, custom headers, unified Verify() method, mode-specific verification, timestamp expiration, query parameter security, body size limits
+- Comprehensive test coverage in `auth_test.go` (1400+ lines) and `client_test.go` (~660 lines)
+- `auth_test.go`: Tests all four modes, custom headers, unified Verify() method, mode-specific verification, timestamp expiration, query parameter security, body size limits, GitHub webhook compatibility
 - `client_test.go`: Tests RoundTripper implementation, Option Pattern, body preservation, transport chaining, error handling
 - Integration tests use `httptest.NewServer` for end-to-end validation
 - All tests must pass on both Ubuntu and macOS

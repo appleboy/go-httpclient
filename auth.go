@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,16 @@ const (
 	AuthModeNone   = "none"   // No authentication
 	AuthModeSimple = "simple" // Simple API secret in header
 	AuthModeHMAC   = "hmac"   // HMAC-SHA256 signature
+	AuthModeGitHub = "github" // GitHub webhook-style HMAC-SHA256 signature
+)
+
+// Default header name constants
+const (
+	DefaultAPISecretHeader       = "X-API-Secret"        // Default header for simple mode
+	DefaultSignatureHeader       = "X-Signature"         // Default signature header for HMAC mode
+	DefaultTimestampHeader       = "X-Timestamp"         // Default timestamp header for HMAC mode
+	DefaultNonceHeader           = "X-Nonce"             // Default nonce header for HMAC mode
+	DefaultGitHubSignatureHeader = "X-Hub-Signature-256" // Default signature header for GitHub mode
 )
 
 // AuthConfig holds authentication configuration
@@ -71,14 +82,21 @@ func WithVerifyMaxBodySize(size int64) VerifyOption {
 
 // NewAuthConfig creates a new AuthConfig with defaults
 func NewAuthConfig(mode, secret string) *AuthConfig {
-	return &AuthConfig{
+	config := &AuthConfig{
 		Mode:            mode,
 		Secret:          secret,
-		HeaderName:      "X-API-Secret",
-		SignatureHeader: "X-Signature",
-		TimestampHeader: "X-Timestamp",
-		NonceHeader:     "X-Nonce",
+		HeaderName:      DefaultAPISecretHeader,
+		SignatureHeader: DefaultSignatureHeader,
+		TimestampHeader: DefaultTimestampHeader,
+		NonceHeader:     DefaultNonceHeader,
 	}
+
+	// GitHub mode uses different default header
+	if mode == AuthModeGitHub {
+		config.SignatureHeader = DefaultGitHubSignatureHeader
+	}
+
+	return config
 }
 
 // addAuthHeaders adds authentication headers to the HTTP request based on configured mode.
@@ -93,6 +111,8 @@ func (c *AuthConfig) addAuthHeaders(req *http.Request, body []byte) error {
 		return c.addSimpleAuth(req)
 	case AuthModeHMAC:
 		return c.addHMACAuth(req, body)
+	case AuthModeGitHub:
+		return c.addGitHubAuth(req, body)
 	default:
 		return fmt.Errorf("unsupported authentication mode: %s", c.Mode)
 	}
@@ -106,7 +126,7 @@ func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
 
 	headerName := c.HeaderName
 	if headerName == "" {
-		headerName = "X-API-Secret"
+		headerName = DefaultAPISecretHeader
 	}
 
 	req.Header.Set(headerName, c.Secret)
@@ -134,22 +154,44 @@ func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
 	// Set headers
 	signatureHeader := c.SignatureHeader
 	if signatureHeader == "" {
-		signatureHeader = "X-Signature"
+		signatureHeader = DefaultSignatureHeader
 	}
 
 	timestampHeader := c.TimestampHeader
 	if timestampHeader == "" {
-		timestampHeader = "X-Timestamp"
+		timestampHeader = DefaultTimestampHeader
 	}
 
 	nonceHeader := c.NonceHeader
 	if nonceHeader == "" {
-		nonceHeader = "X-Nonce"
+		nonceHeader = DefaultNonceHeader
 	}
 
 	req.Header.Set(signatureHeader, signature)
 	req.Header.Set(timestampHeader, strconv.FormatInt(timestamp, 10))
 	req.Header.Set(nonceHeader, nonce)
+
+	return nil
+}
+
+// addGitHubAuth adds GitHub-style authentication headers to the HTTP request.
+// GitHub signature format: "sha256=" + HMAC-SHA256(secret, body)
+func (c *AuthConfig) addGitHubAuth(req *http.Request, body []byte) error {
+	if c.Secret == "" {
+		return fmt.Errorf("secret is required for GitHub mode authentication")
+	}
+
+	// Calculate signature: HMAC-SHA256(secret, body)
+	h := hmac.New(sha256.New, []byte(c.Secret))
+	h.Write(body)
+	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+
+	// Set single header
+	signatureHeader := c.SignatureHeader
+	if signatureHeader == "" {
+		signatureHeader = DefaultGitHubSignatureHeader
+	}
+	req.Header.Set(signatureHeader, signature)
 
 	return nil
 }
@@ -219,6 +261,8 @@ func (c *AuthConfig) Verify(req *http.Request, opts ...VerifyOption) error {
 		return c.verifySimpleAuth(req)
 	case AuthModeHMAC:
 		return c.verifyHMACSignature(req, opts...)
+	case AuthModeGitHub:
+		return c.verifyGitHubSignature(req, opts...)
 	default:
 		return fmt.Errorf("unsupported authentication mode: %s", c.Mode)
 	}
@@ -234,7 +278,7 @@ func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 
 	headerName := c.HeaderName
 	if headerName == "" {
-		headerName = "X-API-Secret"
+		headerName = DefaultAPISecretHeader
 	}
 
 	secret := req.Header.Get(headerName)
@@ -269,12 +313,12 @@ func (c *AuthConfig) verifyHMACSignature(
 	// Get headers
 	signatureHeader := c.SignatureHeader
 	if signatureHeader == "" {
-		signatureHeader = "X-Signature"
+		signatureHeader = DefaultSignatureHeader
 	}
 
 	timestampHeader := c.TimestampHeader
 	if timestampHeader == "" {
-		timestampHeader = "X-Timestamp"
+		timestampHeader = DefaultTimestampHeader
 	}
 
 	signature := req.Header.Get(signatureHeader)
@@ -332,6 +376,80 @@ func (c *AuthConfig) verifyHMACSignature(
 	)
 
 	// Compare signatures
+	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+		return fmt.Errorf("signature verification failed")
+	}
+
+	return nil
+}
+
+// verifyGitHubSignature verifies GitHub-style HMAC-SHA256 signatures.
+//
+// GitHub signature format:
+// - Header: X-Hub-Signature-256 (configurable via SignatureHeader)
+// - Format: "sha256=<hex_digest>"
+// - Signature: HMAC-SHA256(secret, body)
+//
+// Note: GitHub mode does NOT include timestamp validation, as GitHub
+// does not provide timestamps in webhook requests. This means the signature
+// alone cannot prevent replay attacks. Use HTTPS and webhook secret rotation
+// to mitigate this risk.
+func (c *AuthConfig) verifyGitHubSignature(
+	req *http.Request,
+	opts ...VerifyOption,
+) error {
+	if c.Secret == "" {
+		return fmt.Errorf("secret is required for GitHub mode verification")
+	}
+
+	// Apply verification options (primarily for MaxBodySize)
+	options := defaultVerifyOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// Get signature header
+	signatureHeader := c.SignatureHeader
+	if signatureHeader == "" {
+		signatureHeader = DefaultGitHubSignatureHeader
+	}
+	signature := req.Header.Get(signatureHeader)
+	if signature == "" {
+		return fmt.Errorf("missing %s header", signatureHeader)
+	}
+
+	// Validate signature format
+	if !strings.HasPrefix(signature, "sha256=") {
+		return fmt.Errorf(
+			"invalid signature format: expected 'sha256=<hex>', got '%s'",
+			signature,
+		)
+	}
+
+	// Read body with size limit
+	body, err := io.ReadAll(io.LimitReader(req.Body, options.MaxBodySize+1))
+	if err != nil {
+		return fmt.Errorf("failed to read request body: %w", err)
+	}
+
+	// Check body size
+	if int64(len(body)) > options.MaxBodySize {
+		return fmt.Errorf(
+			"request body too large: %d bytes exceeds limit of %d bytes",
+			len(body),
+			options.MaxBodySize,
+		)
+	}
+
+	// Restore body for subsequent handlers
+	req.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	// Calculate expected signature
+	h := hmac.New(sha256.New, []byte(c.Secret))
+	h.Write(body)
+	expectedSignature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+
+	// Constant-time comparison to prevent timing attacks
 	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
 		return fmt.Errorf("signature verification failed")
 	}
