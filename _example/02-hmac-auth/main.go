@@ -10,8 +10,9 @@ import (
 )
 
 func main() {
-	// Create auth config with HMAC mode
-	auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "my-shared-secret")
+	// Create HTTP client with HMAC authentication mode
+	// Authentication headers are added automatically to all requests
+	client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "my-shared-secret")
 
 	// Create HTTP request with query parameters
 	reqBody := []byte(`{"action": "create", "resource": "user"}`)
@@ -27,30 +28,31 @@ func main() {
 	// Set content type
 	req.Header.Set("Content-Type", "application/json")
 
-	// Add HMAC authentication headers
-	if err := auth.AddAuthHeaders(req, reqBody); err != nil {
-		log.Fatalf("Failed to add auth headers: %v", err)
-	}
-
-	// Print request details for demonstration
 	fmt.Println("Request Details:")
 	fmt.Printf("  Method: %s\n", req.Method)
 	fmt.Printf("  URL: %s\n", req.URL.String())
 	fmt.Printf("  Body: %s\n", string(reqBody))
-	fmt.Println("\nAuthentication Headers:")
-	fmt.Printf("  X-Signature: %s\n", req.Header.Get("X-Signature"))
-	fmt.Printf("  X-Timestamp: %s\n", req.Header.Get("X-Timestamp"))
-	fmt.Printf("  X-Nonce: %s\n", req.Header.Get("X-Nonce"))
+
+	fmt.Println("\nMaking request with automatic HMAC authentication...")
+	fmt.Println("The following headers will be added automatically:")
+	fmt.Println("  - X-Signature: HMAC-SHA256 signature")
+	fmt.Println("  - X-Timestamp: Unix timestamp")
+	fmt.Println("  - X-Nonce: Unique request identifier")
 
 	// Send request (commented out to avoid actual HTTP call)
-	// client := &http.Client{}
+	// The client automatically adds authentication headers before sending
 	// resp, err := client.Do(req)
 	// if err != nil {
 	// 	log.Fatalf("Request failed: %v", err)
 	// }
 	// defer resp.Body.Close()
 
-	fmt.Println("\nHMAC authentication headers added successfully!")
+	fmt.Println("\nClient configured successfully!")
+
+	// Silence "declared and not used" error for demonstration
+	_ = client
+	_ = req
+
 	fmt.Println("\nSignature Calculation:")
 	fmt.Println("  message = timestamp + method + path + query + body")
 	fmt.Println("  signature = HMAC-SHA256(secret, message)")

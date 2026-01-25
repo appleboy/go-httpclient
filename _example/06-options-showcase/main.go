@@ -10,8 +10,6 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Client Options Showcase ===\n")
-
 	// Example 1: Minimal setup (only required parameters)
 	fmt.Println("Example 1: Minimal setup")
 	client1 := httpclient.NewAuthClient(

@@ -16,7 +16,7 @@ func main() {
 	http.HandleFunc("/api/data", authMiddleware(dataHandler))
 
 	fmt.Println("Server starting on http://localhost:8080")
-	fmt.Println("Testing with sample requests...\n")
+	fmt.Println("Testing with sample requests...")
 
 	// Wait a moment for server to start
 	go func() {
@@ -53,11 +53,13 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Create auth config with same secret as client
 		auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret-key")
 
-		// Verify HMAC signature using defaults (5 minutes max age, 10MB max body size)
-		// Or customize with options:
-		//   auth.VerifyHMACSignature(r, httpclient.WithVerifyMaxAge(10*time.Minute))
-		//   auth.VerifyHMACSignature(r, httpclient.WithVerifyMaxBodySize(5*1024*1024))
-		if err := auth.VerifyHMACSignature(r); err != nil {
+		// Use the unified Verify() method
+		// This automatically selects the right verification based on auth mode
+		//
+		// You can also pass options for HMAC mode:
+		//   auth.Verify(r, httpclient.WithVerifyMaxAge(10*time.Minute))
+		//   auth.Verify(r, httpclient.WithVerifyMaxBodySize(5*1024*1024))
+		if err := auth.Verify(r); err != nil {
 			http.Error(w, fmt.Sprintf("Authentication failed: %v", err), http.StatusUnauthorized)
 			fmt.Printf("  ❌ Authentication failed: %v\n", err)
 			return
@@ -70,7 +72,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // dataHandler processes authenticated requests
 func dataHandler(w http.ResponseWriter, r *http.Request) {
-	// Read request body (already restored by VerifyHMACSignature)
+	// Read request body (already restored by Verify)
 	body, _ := io.ReadAll(r.Body)
 
 	fmt.Printf("  📦 Received: %s\n", string(body))
@@ -83,7 +85,8 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 
 // sendValidRequest sends a properly authenticated request
 func sendValidRequest() {
-	auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret-key")
+	// Create authenticated HTTP client
+	client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "shared-secret-key")
 
 	reqBody := []byte(`{"action": "read", "resource": "data"}`)
 	req, _ := http.NewRequest(
@@ -92,9 +95,7 @@ func sendValidRequest() {
 		bytes.NewBuffer(reqBody),
 	)
 
-	auth.AddAuthHeaders(req, reqBody)
-
-	client := &http.Client{}
+	// Authentication headers are added automatically by the client
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("  ❌ Request failed: %v\n", err)

@@ -10,17 +10,20 @@ import (
 )
 
 func main() {
-	fmt.Println("=== Example 1: Custom Simple Auth Header ===\n")
+	fmt.Println("=== Example 1: Custom Simple Auth Header ===")
 	simpleAuthExample()
 
-	fmt.Println("\n\n=== Example 2: Custom HMAC Headers ===\n")
+	fmt.Println("\n\n=== Example 2: Custom HMAC Headers ===")
 	hmacAuthExample()
 }
 
 func simpleAuthExample() {
-	// Create auth config with custom header name
-	auth := httpclient.NewAuthConfig(httpclient.AuthModeSimple, "my-api-key")
-	auth.HeaderName = "Authorization" // Custom header name
+	// Create HTTP client with custom header name for simple authentication
+	client := httpclient.NewAuthClient(
+		httpclient.AuthModeSimple,
+		"my-api-key",
+		httpclient.WithHeaderName("Authorization"), // Custom header name
+	)
 
 	// Create request
 	req, err := http.NewRequest(
@@ -32,23 +35,34 @@ func simpleAuthExample() {
 		log.Fatalf("Failed to create request: %v", err)
 	}
 
-	// Add authentication header
-	if err := auth.AddAuthHeaders(req, nil); err != nil {
-		log.Fatalf("Failed to add auth headers: %v", err)
-	}
+	fmt.Println("Client configured with custom header name")
+	fmt.Println("The 'Authorization' header will be used instead of 'X-API-Secret'")
 
-	// Print headers
-	fmt.Println("Request Headers:")
-	fmt.Printf("  Authorization: %s\n", req.Header.Get("Authorization"))
-	fmt.Println("\nNote: Using 'Authorization' instead of default 'X-API-Secret'")
+	// Send request (commented out to avoid actual HTTP call)
+	// resp, err := client.Do(req)
+	// if err != nil {
+	// 	log.Fatalf("Request failed: %v", err)
+	// }
+	// defer resp.Body.Close()
+
+	fmt.Println("\nNote: All requests made with this client will use the custom header name.")
+
+	// Silence "declared and not used" error for demonstration
+	_ = client
+	_ = req
 }
 
 func hmacAuthExample() {
-	// Create auth config with custom HMAC headers
-	auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret")
-	auth.SignatureHeader = "X-Request-Signature"
-	auth.TimestampHeader = "X-Request-Time"
-	auth.NonceHeader = "X-Request-ID"
+	// Create HTTP client with custom HMAC header names
+	client := httpclient.NewAuthClient(
+		httpclient.AuthModeHMAC,
+		"shared-secret",
+		httpclient.WithHMACHeaders(
+			"X-Request-Signature", // Custom signature header
+			"X-Request-Time",      // Custom timestamp header
+			"X-Request-ID",        // Custom nonce header
+		),
+	)
 
 	// Create request
 	reqBody := []byte(`{"data": "example"}`)
@@ -61,20 +75,23 @@ func hmacAuthExample() {
 		log.Fatalf("Failed to create request: %v", err)
 	}
 
-	// Add authentication headers
-	if err := auth.AddAuthHeaders(req, reqBody); err != nil {
-		log.Fatalf("Failed to add auth headers: %v", err)
-	}
-
-	// Print custom headers
-	fmt.Println("Request Headers:")
-	fmt.Printf("  X-Request-Signature: %s\n", req.Header.Get("X-Request-Signature"))
-	fmt.Printf("  X-Request-Time: %s\n", req.Header.Get("X-Request-Time"))
-	fmt.Printf("  X-Request-ID: %s\n", req.Header.Get("X-Request-ID"))
-
+	fmt.Println("Client configured with custom HMAC headers")
 	fmt.Println("\nCustom Header Mappings:")
 	fmt.Println("  Default           → Custom")
 	fmt.Println("  X-Signature       → X-Request-Signature")
 	fmt.Println("  X-Timestamp       → X-Request-Time")
 	fmt.Println("  X-Nonce           → X-Request-ID")
+
+	// Send request (commented out to avoid actual HTTP call)
+	// resp, err := client.Do(req)
+	// if err != nil {
+	// 	log.Fatalf("Request failed: %v", err)
+	// }
+	// defer resp.Body.Close()
+
+	fmt.Println("\nNote: All requests made with this client will use the custom header names.")
+
+	// Silence "declared and not used" error for demonstration
+	_ = client
+	_ = req
 }

@@ -10,8 +10,9 @@ import (
 )
 
 func main() {
-	// Create auth config with simple mode
-	auth := httpclient.NewAuthConfig(httpclient.AuthModeSimple, "my-secret-api-key")
+	// Create HTTP client with simple authentication mode
+	// Authentication headers are added automatically to all requests
+	client := httpclient.NewAuthClient(httpclient.AuthModeSimple, "my-secret-api-key")
 
 	// Create HTTP request
 	reqBody := []byte(`{"name": "John Doe", "email": "john@example.com"}`)
@@ -27,21 +28,11 @@ func main() {
 	// Set content type
 	req.Header.Set("Content-Type", "application/json")
 
-	// Add authentication headers
-	if err := auth.AddAuthHeaders(req, reqBody); err != nil {
-		log.Fatalf("Failed to add auth headers: %v", err)
-	}
-
-	// Print request headers for demonstration
-	fmt.Println("Request Headers:")
-	for name, values := range req.Header {
-		for _, value := range values {
-			fmt.Printf("  %s: %s\n", name, value)
-		}
-	}
+	fmt.Println("Making request with automatic simple authentication...")
+	fmt.Println("The X-API-Secret header will be added automatically by the client.")
 
 	// Send request (commented out to avoid actual HTTP call)
-	// client := &http.Client{}
+	// The client automatically adds authentication headers before sending
 	// resp, err := client.Do(req)
 	// if err != nil {
 	// 	log.Fatalf("Request failed: %v", err)
@@ -52,6 +43,18 @@ func main() {
 	// fmt.Printf("\nResponse Status: %s\n", resp.Status)
 	// fmt.Printf("Response Body: %s\n", string(body))
 
-	fmt.Println("\nSimple authentication header added successfully!")
-	fmt.Println("The X-API-Secret header contains the API key for authentication.")
+	fmt.Println("\nClient configured successfully!")
+	fmt.Println(
+		"All requests made with this client will automatically include the X-API-Secret header.",
+	)
+
+	// Silence "declared and not used" error for demonstration
+	_ = client
+	_ = req
+
+	// Demonstrate that you can also use client.Get(), client.Post(), etc.
+	fmt.Println("\nYou can also use convenience methods:")
+	fmt.Println("  client.Get(url)")
+	fmt.Println("  client.Post(url, contentType, body)")
+	fmt.Println("  client.PostForm(url, data)")
 }

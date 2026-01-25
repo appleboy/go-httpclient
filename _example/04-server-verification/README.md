@@ -1,11 +1,12 @@
 # Server-Side Verification Example
 
-This example demonstrates how to verify HMAC signatures on the server side to authenticate incoming requests.
+This example demonstrates how to verify authentication on the server side using the unified `Verify()` method or mode-specific verification methods.
 
 ## Features
 
 - Complete HTTP server with authentication middleware
-- HMAC signature verification
+- Unified verification method for all authentication modes
+- Mode-specific verification methods (Simple, HMAC)
 - Timestamp validation (replay attack prevention)
 - Automatic request body preservation
 - Comprehensive error handling
@@ -27,11 +28,15 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret-key")
 
-        // Verify HMAC signature (max age: 5 minutes)
-        if err := auth.VerifyHMACSignature(r, 5*time.Minute); err != nil {
+        // Use unified Verify() method
+        // Automatically selects the right verification based on auth mode
+        if err := auth.Verify(r); err != nil {
             http.Error(w, "Authentication failed", http.StatusUnauthorized)
             return
         }
+
+        // You can also pass options for HMAC mode:
+        // auth.Verify(r, httpclient.WithVerifyMaxAge(10*time.Minute))
 
         next(w, r)
     }
@@ -107,11 +112,38 @@ Testing with sample requests...
 
 ## Configuration
 
-### Adjust Timestamp Tolerance
+### Verification Method
+
+The library provides a unified `Verify()` method that automatically selects the appropriate verification logic based on the authentication mode:
+
+```go
+// Automatically selects verification based on auth mode
+auth := httpclient.NewAuthConfig(mode, secret)
+if err := auth.Verify(r); err != nil {
+    // Handle authentication failure
+}
+
+// For HMAC mode, you can pass options
+auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, secret)
+if err := auth.Verify(r,
+    httpclient.WithVerifyMaxAge(10*time.Minute),
+    httpclient.WithVerifyMaxBodySize(5*1024*1024),
+); err != nil {
+    // Handle authentication failure
+}
+```
+
+### Adjust Timestamp Tolerance (HMAC mode only)
 
 ```go
 // Allow 10-minute window instead of default 5 minutes
-auth.VerifyHMACSignature(r, 10*time.Minute)
+auth.Verify(r, httpclient.WithVerifyMaxAge(10*time.Minute))
+
+// You can combine multiple options
+auth.Verify(r,
+    httpclient.WithVerifyMaxAge(10*time.Minute),
+    httpclient.WithVerifyMaxBodySize(5*1024*1024),
+)
 ```
 
 ### Custom Headers
@@ -131,7 +163,8 @@ auth.NonceHeader = "X-Custom-Nonce"
 func AuthMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "secret")
-        if err := auth.VerifyHMACSignature(c.Request, 5*time.Minute); err != nil {
+        // Use unified Verify() method
+        if err := auth.Verify(c.Request); err != nil {
             c.JSON(401, gin.H{"error": "Authentication failed"})
             c.Abort()
             return
@@ -149,7 +182,8 @@ router.POST("/api/data", AuthMiddleware(), dataHandler)
 func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
     return func(c echo.Context) error {
         auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "secret")
-        if err := auth.VerifyHMACSignature(c.Request(), 5*time.Minute); err != nil {
+        // Use unified Verify() method
+        if err := auth.Verify(c.Request()); err != nil {
             return echo.NewHTTPError(401, "Authentication failed")
         }
         return next(c)

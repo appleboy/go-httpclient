@@ -12,10 +12,10 @@ import (
 )
 
 func main() {
-	fmt.Println("=== RoundTripper-based HTTP Client Example ===\n")
+	fmt.Println("=== RoundTripper-based HTTP Client Example ===")
 
 	// One-line client creation with all configurations!
-	client := httpclient.NewAuthClient(
+	_ = httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC, // Authentication mode
 		"my-shared-secret",      // Shared secret
 		httpclient.WithTimeout(10*time.Second),

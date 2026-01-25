@@ -23,7 +23,7 @@ go run main.go
 
 ## Example Output
 
-```
+```txt
 Request Headers:
   Content-Type: application/json
   X-API-Secret: my-secret-api-key

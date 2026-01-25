@@ -31,11 +31,11 @@ func (t *metricsTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func main() {
-	fmt.Println("=== Transport Chaining Example ===\n")
+	fmt.Println("=== Transport Chaining Example ===")
 
 	// Example 1: Simple transport chaining with WithTransport option
 	fmt.Println("Example 1: Chaining authentication with logging")
-	fmt.Println("  Request flow: Client → Auth → Logging → Base Transport\n")
+	fmt.Println("  Request flow: Client → Auth → Logging → Base Transport")
 
 	// Create base transport with custom settings
 	baseTransport := &http.Transport{
@@ -62,7 +62,7 @@ func main() {
 
 	// Example 2: More complex chaining with metrics
 	fmt.Println("\nExample 2: Chaining auth + metrics + logging")
-	fmt.Println("  Request flow: Client → Auth → Metrics → Logging → Base Transport\n")
+	fmt.Println("  Request flow: Client → Auth → Metrics → Logging → Base Transport")
 
 	// Create metrics transport
 	metricsT := &metricsTransport{
@@ -94,7 +94,7 @@ func main() {
 	fmt.Println("  - Custom connection pool settings")
 	fmt.Println("  - Request logging")
 	fmt.Println("  - Automatic authentication")
-	fmt.Println("  - Reasonable timeouts\n")
+	fmt.Println("  - Reasonable timeouts")
 
 	prodTransport := &http.Transport{
 		MaxIdleConns:          100,
