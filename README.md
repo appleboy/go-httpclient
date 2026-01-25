@@ -289,8 +289,6 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 - Regularly rotate webhook secrets to mitigate replay attack risks
 - Default body size limit (10MB) protects against DoS attacks
 
-**See full example:** [`_example/08-github-webhook`](_example/08-github-webhook/)
-
 #### Custom Header Names
 
 Override default header names to match your API standards:
