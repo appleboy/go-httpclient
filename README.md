@@ -42,8 +42,7 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [NewAuthClient (Recommended)](#newauthclient-recommended)
       - [Client Options](#client-options)
       - [NewAuthConfig](#newauthconfig)
-      - [AddAuthHeaders](#addauthheaders)
-      - [VerifyHMACSignature](#verifyhmacsignature)
+      - [Verify](#verify)
   - [Testing](#testing)
     - [Test Coverage](#test-coverage)
   - [Development](#development)
@@ -99,11 +98,10 @@ Without proper authentication, your APIs are vulnerable to:
 
 ### Key Benefits
 
-- **Automatic Authentication**: One-line client creation with built-in request signing
+- **Automatic Authentication**: One-line client creation with built-in request signing via `NewAuthClient`
 - **Flexible Configuration**: Option Pattern for easy customization without breaking changes
-  - Client options: `WithTimeout`, `WithMaxBodySize`, `WithSkipAuthFunc`, etc.
+  - Client options: `WithTimeout`, `WithMaxBodySize`, `WithSkipAuthFunc`, `WithHMACHeaders`, etc.
   - Verification options: `WithVerifyMaxAge`, `WithVerifyMaxBodySize`
-- **Two API Styles**: Automatic (RoundTripper) for simplicity, manual (AddAuthHeaders) for control
 - **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content for enterprise PKI
 - **DoS Protection**: Configurable body size limits prevent memory exhaustion attacks (default: 10MB)
 - **Zero Dependencies** (except `google/uuid` for nonce generation)
@@ -123,7 +121,7 @@ go get github.com/appleboy/go-httpclient
 
 ### Quick Start
 
-**Option 1**: Automatic Authentication (Recommended)
+Automatic Authentication with `NewAuthClient`:
 
 ```go
 package main
@@ -155,44 +153,6 @@ func main() {
 }
 ```
 
-**Option 2**: Manual Authentication (Advanced)
-
-```go
-package main
-
-import (
-    "bytes"
-    "fmt"
-    "net/http"
-
-    "github.com/appleboy/go-httpclient"
-)
-
-func main() {
-    // Create auth config
-    auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "your-secret-key")
-
-    // Create HTTP request
-    body := []byte(`{"user": "john"}`)
-    req, _ := http.NewRequest("POST", "https://api.example.com/users", bytes.NewReader(body))
-
-    // Manually add authentication headers
-    if err := auth.AddAuthHeaders(req, body); err != nil {
-        panic(err)
-    }
-
-    // Send request
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        panic(err)
-    }
-    defer resp.Body.Close()
-
-    fmt.Println("Request sent with manual HMAC authentication")
-}
-```
-
 ### Usage Examples
 
 For complete, runnable examples, see the [`_example`](_example/) directory. Each example includes detailed documentation and can be run independently.
@@ -202,9 +162,9 @@ For complete, runnable examples, see the [`_example`](_example/) directory. Each
 For public endpoints or when authentication is not required:
 
 ```go
-auth := httpclient.NewAuthConfig(httpclient.AuthModeNone, "")
-req, _ := http.NewRequest("GET", "https://api.example.com/public", nil)
-auth.AddAuthHeaders(req, nil) // No headers added
+client := httpclient.NewAuthClient(httpclient.AuthModeNone, "")
+resp, err := client.Get("https://api.example.com/public")
+// No authentication headers added
 ```
 
 #### Simple API Key Authentication
@@ -212,12 +172,13 @@ auth.AddAuthHeaders(req, nil) // No headers added
 For basic authentication with a shared secret:
 
 ```go
-// Using default header name (X-API-Secret)
-auth := httpclient.NewAuthConfig(httpclient.AuthModeSimple, "my-secret-key")
-req, _ := http.NewRequest("GET", "https://api.example.com/data", nil)
-auth.AddAuthHeaders(req, nil)
+// Create client with simple authentication (default header: X-API-Secret)
+client := httpclient.NewAuthClient(httpclient.AuthModeSimple, "my-secret-key")
 
-// Request will include:
+// Make requests - authentication is automatic
+resp, err := client.Get("https://api.example.com/data")
+
+// Request will automatically include:
 // X-API-Secret: my-secret-key
 ```
 
@@ -228,14 +189,18 @@ auth.AddAuthHeaders(req, nil)
 For cryptographically secure request signing:
 
 ```go
-auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret")
+// Create client with HMAC authentication
+client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "shared-secret")
 
+// Make requests - authentication is automatic
 body := []byte(`{"action": "transfer", "amount": 100}`)
-req, _ := http.NewRequest("POST", "https://api.example.com/transactions?user=123", bytes.NewReader(body))
+resp, err := client.Post(
+    "https://api.example.com/transactions?user=123",
+    "application/json",
+    bytes.NewReader(body),
+)
 
-auth.AddAuthHeaders(req, body)
-
-// Request will include:
+// Request will automatically include:
 // X-Signature: a3c8f9b2... (HMAC-SHA256 signature)
 // X-Timestamp: 1704067200 (Unix timestamp)
 // X-Nonce: 550e8400-e29b-41d4-a716-446655440000 (UUID v4)
@@ -261,44 +226,48 @@ signature = HMAC-SHA256("shared-secret", message)
 Override default header names to match your API standards:
 
 ```go
-auth := httpclient.NewAuthConfig(httpclient.AuthModeSimple, "my-key")
-auth.HeaderName = "Authorization"
-
-auth.AddAuthHeaders(req, nil)
-// Request will include:
+// Simple mode with custom header name
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeSimple,
+    "my-key",
+    httpclient.WithHeaderName("Authorization"),
+)
+// Requests will include:
 // Authorization: my-key
 ```
 
 For HMAC mode:
 
 ```go
-auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "secret")
-auth.SignatureHeader = "X-Custom-Signature"
-auth.TimestampHeader = "X-Request-Time"
-auth.NonceHeader = "X-Request-ID"
-
-auth.AddAuthHeaders(req, body)
-// Request will include custom header names
+// HMAC mode with custom header names
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithHMACHeaders("X-Custom-Signature", "X-Request-Time", "X-Request-ID"),
+)
+// Requests will include custom header names
 ```
 
 **See full example:** [`_example/03-custom-headers`](_example/03-custom-headers/)
 
 #### Server-Side Verification
 
-Verify HMAC signatures on the server side with flexible options:
+Verify authentication on the server side with the unified `Verify()` method:
 
 ```go
 func authMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Create auth config with same mode and secret as client
         auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret")
 
+        // Verify automatically selects the right verification based on mode
         // Use defaults (5 minutes max age, 10MB max body size)
-        if err := auth.VerifyHMACSignature(r); err != nil {
+        if err := auth.Verify(r); err != nil {
             http.Error(w, "Authentication failed: "+err.Error(), http.StatusUnauthorized)
             return
         }
 
-        // Signature is valid, proceed to next handler
+        // Authentication is valid, proceed to next handler
         next.ServeHTTP(w, r)
     })
 }
@@ -315,11 +284,11 @@ func main() {
 }
 ```
 
-**Customize Verification Options:**
+**Customize Verification Options (HMAC mode only):**
 
 ```go
 // Strict API endpoint - 2 minute timeout, 1MB limit
-if err := auth.VerifyHMACSignature(r,
+if err := auth.Verify(r,
     httpclient.WithVerifyMaxAge(2*time.Minute),
     httpclient.WithVerifyMaxBodySize(1*1024*1024),
 ); err != nil {
@@ -327,7 +296,7 @@ if err := auth.VerifyHMACSignature(r,
 }
 
 // File upload endpoint - 10 minute timeout, 50MB limit
-if err := auth.VerifyHMACSignature(r,
+if err := auth.Verify(r,
     httpclient.WithVerifyMaxAge(10*time.Minute),
     httpclient.WithVerifyMaxBodySize(50*1024*1024),
 ); err != nil {
@@ -335,7 +304,7 @@ if err := auth.VerifyHMACSignature(r,
 }
 
 // Custom max age only (use default 10MB body limit)
-if err := auth.VerifyHMACSignature(r,
+if err := auth.Verify(r,
     httpclient.WithVerifyMaxAge(15*time.Minute),
 ); err != nil {
     return err
@@ -481,7 +450,6 @@ client := httpclient.NewAuthClient(
   - Early rejection with `io.LimitReader` for safe, bounded reading
 - **Customizable Headers**: Override default header names to match your API conventions
 - **Dual Purpose**: Same package for client signing and server verification
-- **Two API Styles**: Automatic (RoundTripper) or manual (AddAuthHeaders)
 - **Zero Config Defaults**: Sensible defaults with optional customization
 - **Production Ready**: 90%+ test coverage, comprehensive linting, and security scanning
 
@@ -539,10 +507,10 @@ Signature: HMAC-SHA256("my-secret", message)
 
    ```go
    // Strict API: 1MB limit
-   auth.VerifyHMACSignature(req, httpclient.WithVerifyMaxBodySize(1*1024*1024))
+   auth.Verify(req, httpclient.WithVerifyMaxBodySize(1*1024*1024))
 
    // File upload API: 50MB limit
-   auth.VerifyHMACSignature(req, httpclient.WithVerifyMaxBodySize(50*1024*1024))
+   auth.Verify(req, httpclient.WithVerifyMaxBodySize(50*1024*1024))
    ```
 
 ### Security Best Practices
@@ -659,46 +627,48 @@ testClient := httpclient.NewAuthClient(
 func NewAuthConfig(mode, secret string) *AuthConfig
 ```
 
-Creates a new `AuthConfig` with default header names. Use this for manual authentication or server-side verification.
+Creates a new `AuthConfig` with default header names. This is primarily used for server-side verification with the `Verify()` method.
 
 **Parameters:**
 
 - `mode`: Authentication mode (`AuthModeNone`, `AuthModeSimple`, or `AuthModeHMAC`)
-- `secret`: Shared secret key (required for simple and HMAC modes)
+- `secret`: Shared secret key (must match the client's secret)
 
 **Returns:** Configured `*AuthConfig` with defaults
 
-#### AddAuthHeaders
+**Example:**
 
 ```go
-func (c *AuthConfig) AddAuthHeaders(req *http.Request, body []byte) error
+// Server-side verification
+auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "shared-secret")
+if err := auth.Verify(req); err != nil {
+    http.Error(w, "Authentication failed", http.StatusUnauthorized)
+    return
+}
 ```
 
-Manually adds authentication headers to an HTTP request. Use this for advanced scenarios like middleware or large file uploads.
-
-**Parameters:**
-
-- `req`: HTTP request to add headers to
-- `body`: Request body (required for HMAC signature calculation)
-
-**Returns:** Error if authentication fails or invalid configuration
-
-#### VerifyHMACSignature
+#### Verify
 
 ```go
-func (c *AuthConfig) VerifyHMACSignature(req *http.Request, opts ...VerifyOption) error
+func (c *AuthConfig) Verify(req *http.Request, opts ...VerifyOption) error
 ```
 
-Verifies HMAC signature from an HTTP request (server-side validation). Uses the Options Pattern for flexible configuration.
+Verifies authentication from an HTTP request (server-side validation). This is the unified verification method that automatically selects the appropriate verification logic based on the configured authentication mode.
+
+**Supported Modes:**
+
+- `AuthModeNone`: No verification performed, returns nil immediately
+- `AuthModeSimple`: Verifies the API secret in the configured header
+- `AuthModeHMAC`: Verifies HMAC signature with timestamp and body validation
 
 **Parameters:**
 
 - `req`: HTTP request to verify
-- `opts`: Optional configuration (max age, body size limit)
+- `opts`: Optional configuration (only applies to HMAC mode)
 
 **Returns:** Error if verification fails or signature is invalid
 
-**Available Options:**
+**Available Options (HMAC mode only):**
 
 - `WithVerifyMaxAge(duration)` - Maximum age for request timestamps (default: 5 minutes)
 - `WithVerifyMaxBodySize(bytes)` - Maximum request body size to prevent DoS attacks (default: 10MB)
@@ -706,27 +676,32 @@ Verifies HMAC signature from an HTTP request (server-side validation). Uses the 
 **Examples:**
 
 ```go
-// Use defaults (5 minutes, 10MB)
-err := auth.VerifyHMACSignature(req)
+// Simple mode verification
+auth := httpclient.NewAuthConfig(httpclient.AuthModeSimple, "secret")
+err := auth.Verify(req)
 
-// Custom max age only
-err := auth.VerifyHMACSignature(req,
+// HMAC mode with defaults (5 minutes, 10MB)
+auth := httpclient.NewAuthConfig(httpclient.AuthModeHMAC, "secret")
+err := auth.Verify(req)
+
+// HMAC mode with custom max age only
+err := auth.Verify(req,
     httpclient.WithVerifyMaxAge(10*time.Minute),
 )
 
-// Custom body size limit only
-err := auth.VerifyHMACSignature(req,
+// HMAC mode with custom body size limit only
+err := auth.Verify(req,
     httpclient.WithVerifyMaxBodySize(5*1024*1024),
 )
 
-// Combine multiple options
-err := auth.VerifyHMACSignature(req,
+// HMAC mode with multiple options
+err := auth.Verify(req,
     httpclient.WithVerifyMaxAge(10*time.Minute),
     httpclient.WithVerifyMaxBodySize(50*1024*1024),
 )
 ```
 
-**Security Features:**
+**Security Features (HMAC mode):**
 
 - **Body Size Limit**: Prevents memory exhaustion DoS attacks (default: 10MB)
 - **Timestamp Validation**: Rejects requests older than max age (default: 5 minutes)

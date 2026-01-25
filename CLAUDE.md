@@ -44,11 +44,15 @@ go tool cover -html=coverage.txt
 
 ### Core Components
 
-**auth.go** (221 lines): Core authentication implementation:
+**auth.go** (~360 lines): Core authentication implementation:
 
 - `AuthConfig`: Main configuration struct with authentication mode, secret, and customizable header names
-- Internal method: `addAuthHeaders()` adds authentication headers (used by authRoundTripper)
-- Server-side methods: `VerifyHMACSignature()` validates incoming requests
+- `NewAuthConfig()`: Factory function to create AuthConfig for server-side verification
+- Public verification method: `Verify()` validates incoming requests for all authentication modes
+- Private methods:
+  - `addAuthHeaders()`: Adds authentication headers (used internally by authRoundTripper)
+  - `verifySimpleAuth()`: Validates Simple mode authentication
+  - `verifyHMACSignature()`: Validates HMAC mode authentication with options
 - HMAC signature calculation: `calculateHMACSignature()` computes signatures from timestamp + method + full path (including query) + body
 
 **client.go** (~290 lines): RoundTripper-based HTTP client with automatic authentication:
@@ -71,10 +75,14 @@ go tool cover -html=coverage.txt
 
 **Server-side verification:**
 
-1. Create `AuthConfig` with same secret
-2. Call `VerifyHMACSignature(req, maxAge)` in middleware
-3. Body is read and restored to `req.Body` for downstream handlers
-4. Timestamp checked against `maxAge` (default: 5 minutes)
+1. Create `AuthConfig` with same mode and secret as client
+2. Call `Verify(req, ...opts)` in middleware
+3. Verification method is automatically selected based on mode:
+   - `AuthModeNone`: No verification performed
+   - `AuthModeSimple`: Verifies API secret in header
+   - `AuthModeHMAC`: Verifies signature, timestamp, and body
+4. For HMAC mode: Body is read and restored to `req.Body` for downstream handlers
+5. For HMAC mode: Timestamp checked against options (default: 5 minutes)
 
 ### HMAC Signature Components
 
@@ -89,14 +97,34 @@ Example: `"1704067200POST/api/users?role=admin{\"name\":\"John\"}"`
 
 Query parameters are intentionally included in signature to prevent parameter injection attacks.
 
+## Verification API Design
+
+The library provides a unified `Verify()` method for server-side authentication validation:
+
+**Public API:**
+
+- `Verify(req *http.Request, opts ...VerifyOption) error` - Unified verification method that automatically dispatches to the appropriate verification logic based on `AuthConfig.Mode`
+
+**Private Methods (internal use only):**
+
+- `verifySimpleAuth(req *http.Request) error` - Validates Simple mode authentication
+- `verifyHMACSignature(req *http.Request, opts ...VerifyOption) error` - Validates HMAC mode authentication
+
+**Design Rationale:**
+
+- Provides a single, consistent API for all authentication modes
+- Automatically selects the correct verification based on configuration
+- Internal methods keep implementation details private
+- Options Pattern allows flexible configuration for HMAC mode
+
 ## Testing Requirements
 
-- Comprehensive test coverage in `auth_test.go` (560+ lines) and `client_test.go` (~660 lines)
-- `auth_test.go`: Tests all three modes, custom headers, signature verification, timestamp expiration, query parameter security
+- Comprehensive test coverage in `auth_test.go` (1000+ lines) and `client_test.go` (~660 lines)
+- `auth_test.go`: Tests all three modes, custom headers, unified Verify() method, mode-specific verification, timestamp expiration, query parameter security, body size limits
 - `client_test.go`: Tests RoundTripper implementation, Option Pattern, body preservation, transport chaining, error handling
 - Integration tests use `httptest.NewServer` for end-to-end validation
 - All tests must pass on both Ubuntu and macOS
-- Current coverage: >90% (exceeds 80% minimum requirement)
+- Current coverage: ~90% (exceeds 80% minimum requirement)
 
 ## Linting Configuration
 
