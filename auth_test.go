@@ -244,6 +244,7 @@ func TestAuthConfig_calculateHMACSignature(t *testing.T) {
 
 func TestAuthConfig_VerifyHMACSignature(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -265,14 +266,15 @@ func TestAuthConfig_VerifyHMACSignature(t *testing.T) {
 	req.Header.Set(testXSignature, signature)
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err != nil {
-		t.Errorf("VerifyHMACSignature() error = %v, want nil", err)
+		t.Errorf("Verify() error = %v, want nil", err)
 	}
 }
 
 func TestAuthConfig_VerifyHMACSignature_InvalidSignature(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -293,7 +295,7 @@ func TestAuthConfig_VerifyHMACSignature_InvalidSignature(t *testing.T) {
 	req.Header.Set(testXSignature, "invalid-signature-12345")
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err == nil {
 		t.Errorf("VerifyHMACSignature() error = nil, want error")
 	}
@@ -301,6 +303,7 @@ func TestAuthConfig_VerifyHMACSignature_InvalidSignature(t *testing.T) {
 
 func TestAuthConfig_VerifyHMACSignature_ExpiredTimestamp(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -323,7 +326,7 @@ func TestAuthConfig_VerifyHMACSignature_ExpiredTimestamp(t *testing.T) {
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Verify with 5 minute max age - should fail
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err == nil {
 		t.Errorf("VerifyHMACSignature() error = nil, want expired error")
 	}
@@ -331,6 +334,7 @@ func TestAuthConfig_VerifyHMACSignature_ExpiredTimestamp(t *testing.T) {
 
 func TestAuthConfig_VerifyHMACSignature_MissingHeaders(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -394,7 +398,7 @@ func TestAuthConfig_VerifyHMACSignature_MissingHeaders(t *testing.T) {
 			bodyBytes, _ := io.ReadAll(req.Body)
 			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-			err := config.VerifyHMACSignature(req)
+			err := config.Verify(req)
 			if (err != nil) != tt.wantError {
 				t.Errorf("VerifyHMACSignature() error = %v, wantError %v", err, tt.wantError)
 			}
@@ -437,6 +441,7 @@ func TestNewAuthConfig(t *testing.T) {
 // by subsequent handlers after signature verification.
 func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -459,7 +464,7 @@ func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Verify the signature (this will read the body)
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err != nil {
 		t.Fatalf("VerifyHMACSignature() error = %v, want nil", err)
 	}
@@ -493,6 +498,7 @@ func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 // where an attacker could send a request with a future timestamp.
 func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -515,7 +521,7 @@ func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Verify with 5 minute max age - should fail for future timestamp
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err == nil {
 		t.Error("VerifyHMACSignature() error = nil, want future timestamp error")
 		t.Error("SECURITY VULNERABILITY: Request with future timestamp was accepted!")
@@ -534,6 +540,7 @@ func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
 // query parameters without invalidating the signature, which is a security vulnerability.
 func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -560,7 +567,7 @@ func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 	// Verify original request passes
 	req1.Header.Set(testXSignature, signature)
 	req1.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
-	if err := config.VerifyHMACSignature(req1); err != nil {
+	if err := config.Verify(req1); err != nil {
 		t.Fatalf("Original request should pass verification: %v", err)
 	}
 
@@ -579,7 +586,7 @@ func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 	req2.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Verify the tampered request
-	err := config.VerifyHMACSignature(req2)
+	err := config.Verify(req2)
 
 	// This SHOULD fail because query params are different
 	// If it passes, it means query params are NOT included in signature (security bug)
@@ -604,6 +611,7 @@ func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 // requests with body size within the limit are accepted.
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_WithinLimit(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -626,7 +634,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_WithinLimit(t *testing.T) 
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Use default 10MB limit
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err != nil {
 		t.Errorf("VerifyHMACSignature() error = %v, want nil for body within limit", err)
 	}
@@ -636,6 +644,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_WithinLimit(t *testing.T) 
 // requests with body size exceeding the limit are rejected.
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExceedsLimit(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -659,7 +668,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExceedsLimit(t *testing.T)
 
 	// Set limit to 1KB (1024 bytes) - body is 2KB, should fail
 	maxBodySize := int64(1024)
-	err = config.VerifyHMACSignature(req, WithVerifyMaxBodySize(maxBodySize))
+	err = config.Verify(req, WithVerifyMaxBodySize(maxBodySize))
 	if err == nil {
 		t.Error("VerifyHMACSignature() error = nil, want body size error")
 		t.Error("SECURITY VULNERABILITY: Large body was accepted despite size limit!")
@@ -676,6 +685,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExceedsLimit(t *testing.T)
 // requests with body size exactly at the limit are accepted.
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExactLimit(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -699,7 +709,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExactLimit(t *testing.T) {
 
 	// Set limit to exactly 1KB
 	maxBodySize := int64(1024)
-	err = config.VerifyHMACSignature(req, WithVerifyMaxBodySize(maxBodySize))
+	err = config.Verify(req, WithVerifyMaxBodySize(maxBodySize))
 	if err != nil {
 		t.Errorf("VerifyHMACSignature() error = %v, want nil for body at exact limit", err)
 	}
@@ -709,6 +719,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExactLimit(t *testing.T) {
 // the default 10MB limit is applied when no options are provided.
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -731,7 +742,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T)
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Use default limit (no options)
-	err = config.VerifyHMACSignature(req)
+	err = config.Verify(req)
 	if err != nil {
 		t.Errorf("VerifyHMACSignature() error = %v, want nil with default 10MB limit", err)
 	}
@@ -753,7 +764,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T)
 	req2.Header.Set(testXSignature, largeSignature)
 	req2.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
-	err = config.VerifyHMACSignature(req2)
+	err = config.Verify(req2)
 	if err == nil {
 		t.Error("VerifyHMACSignature() should reject 11MB body with default 10MB limit")
 	}
@@ -763,6 +774,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T)
 // multiple options can be combined using the Option Pattern.
 func TestAuthConfig_VerifyHMACSignature_MultipleOptions(t *testing.T) {
 	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
 		Secret: "test-secret",
 	}
 
@@ -784,11 +796,263 @@ func TestAuthConfig_VerifyHMACSignature_MultipleOptions(t *testing.T) {
 	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
 
 	// Combine multiple options
-	err = config.VerifyHMACSignature(req,
+	err = config.Verify(req,
 		WithVerifyMaxAge(10*time.Minute),
 		WithVerifyMaxBodySize(1024),
 	)
 	if err != nil {
 		t.Errorf("VerifyHMACSignature() with multiple options error = %v, want nil", err)
+	}
+}
+
+// TestAuthConfig_VerifySimpleAuth tests simple authentication verification.
+func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
+	tests := []struct {
+		name       string
+		config     *AuthConfig
+		headerName string
+		secret     string
+		wantErr    bool
+		errMsg     string
+	}{
+		{
+			name: "Valid secret with default header",
+			config: &AuthConfig{
+				Secret: "test-secret-123",
+			},
+			headerName: "X-API-Secret",
+			secret:     "test-secret-123",
+			wantErr:    false,
+		},
+		{
+			name: "Valid secret with custom header",
+			config: &AuthConfig{
+				Secret:     "my-custom-secret",
+				HeaderName: "X-Custom-Auth",
+			},
+			headerName: "X-Custom-Auth",
+			secret:     "my-custom-secret",
+			wantErr:    false,
+		},
+		{
+			name: "Invalid secret",
+			config: &AuthConfig{
+				Secret: "correct-secret",
+			},
+			headerName: "X-API-Secret",
+			secret:     "wrong-secret",
+			wantErr:    true,
+			errMsg:     "authentication failed",
+		},
+		{
+			name: "Missing header",
+			config: &AuthConfig{
+				Secret: "test-secret",
+			},
+			headerName: "X-API-Secret",
+			secret:     "",
+			wantErr:    true,
+			errMsg:     "missing authentication header",
+		},
+		{
+			name: "Empty secret in config",
+			config: &AuthConfig{
+				Secret: "",
+			},
+			headerName: "X-API-Secret",
+			secret:     "some-secret",
+			wantErr:    true,
+			errMsg:     "secret is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(
+				context.Background(),
+				"GET",
+				testExampleURL,
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			if tt.secret != "" {
+				req.Header.Set(tt.headerName, tt.secret)
+			}
+
+			err = tt.config.verifySimpleAuth(req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("VerifySimpleAuth() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr && err != nil && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("VerifySimpleAuth() error = %v, want error containing %q", err, tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestAuthConfig_Verify tests the unified verification method.
+func TestAuthConfig_Verify(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *AuthConfig
+		setup   func(*http.Request, *AuthConfig)
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "AuthModeNone - no verification",
+			config: &AuthConfig{
+				Mode:   AuthModeNone,
+				Secret: "test-secret",
+			},
+			setup:   func(req *http.Request, c *AuthConfig) {},
+			wantErr: false,
+		},
+		{
+			name: "Empty mode - no verification",
+			config: &AuthConfig{
+				Mode:   "",
+				Secret: "test-secret",
+			},
+			setup:   func(req *http.Request, c *AuthConfig) {},
+			wantErr: false,
+		},
+		{
+			name:    "Nil config - no verification",
+			config:  (*AuthConfig)(nil),
+			setup:   func(req *http.Request, c *AuthConfig) {},
+			wantErr: false,
+		},
+		{
+			name: "AuthModeSimple - valid secret",
+			config: &AuthConfig{
+				Mode:   AuthModeSimple,
+				Secret: "test-secret",
+			},
+			setup: func(req *http.Request, c *AuthConfig) {
+				req.Header.Set("X-API-Secret", "test-secret")
+			},
+			wantErr: false,
+		},
+		{
+			name: "AuthModeSimple - invalid secret",
+			config: &AuthConfig{
+				Mode:   AuthModeSimple,
+				Secret: "correct-secret",
+			},
+			setup: func(req *http.Request, c *AuthConfig) {
+				req.Header.Set("X-API-Secret", "wrong-secret")
+			},
+			wantErr: true,
+			errMsg:  "authentication failed",
+		},
+		{
+			name: "AuthModeHMAC - valid signature",
+			config: &AuthConfig{
+				Mode:   AuthModeHMAC,
+				Secret: "hmac-secret",
+			},
+			setup: func(req *http.Request, c *AuthConfig) {
+				body := []byte(`{"test":"data"}`)
+				timestamp := time.Now().Unix()
+				signature := c.calculateHMACSignature(timestamp, "POST", "/api", body)
+				req.Header.Set(testXSignature, signature)
+				req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
+				req.Body = io.NopCloser(bytes.NewBuffer(body))
+			},
+			wantErr: false,
+		},
+		{
+			name: "AuthModeHMAC - invalid signature",
+			config: &AuthConfig{
+				Mode:   AuthModeHMAC,
+				Secret: "hmac-secret",
+			},
+			setup: func(req *http.Request, c *AuthConfig) {
+				body := []byte(`{"test":"data"}`)
+				timestamp := time.Now().Unix()
+				req.Header.Set(testXSignature, "invalid-signature")
+				req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
+				req.Body = io.NopCloser(bytes.NewBuffer(body))
+			},
+			wantErr: true,
+			errMsg:  "signature verification failed",
+		},
+		{
+			name: "Unsupported mode",
+			config: &AuthConfig{
+				Mode:   "unsupported-mode",
+				Secret: "test-secret",
+			},
+			setup:   func(req *http.Request, c *AuthConfig) {},
+			wantErr: true,
+			errMsg:  "unsupported authentication mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(
+				context.Background(),
+				"POST",
+				testExampleURL,
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			if tt.setup != nil {
+				tt.setup(req, tt.config)
+			}
+
+			err = tt.config.Verify(req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Verify() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.wantErr && err != nil && tt.errMsg != "" &&
+				!strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Verify() error = %v, want error containing %q", err, tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestAuthConfig_Verify_WithOptions tests Verify with VerifyOptions for HMAC mode.
+func TestAuthConfig_Verify_WithOptions(t *testing.T) {
+	config := &AuthConfig{
+		Mode:   AuthModeHMAC,
+		Secret: "test-secret",
+	}
+
+	body := []byte(`{"test":"data"}`)
+	timestamp := time.Now().Unix()
+	signature := config.calculateHMACSignature(timestamp, "POST", "/api/data", body)
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"http://example.com/api/data",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	req.Header.Set(testXSignature, signature)
+	req.Header.Set(testXTimestamp, strconv.FormatInt(timestamp, 10))
+
+	// Test with options
+	err = config.Verify(req,
+		WithVerifyMaxAge(10*time.Minute),
+		WithVerifyMaxBodySize(1024),
+	)
+	if err != nil {
+		t.Errorf("Verify() with options error = %v, want nil", err)
 	}
 }

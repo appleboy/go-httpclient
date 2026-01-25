@@ -184,26 +184,75 @@ func getFullPath(req *http.Request) string {
 	return path
 }
 
-// VerifyHMACSignature verifies HMAC signature from request (for server-side validation)
-// Use WithVerifyMaxAge and WithVerifyMaxBodySize options to customize verification behavior.
+// Verify verifies the request based on the configured authentication mode.
+// This is the unified verification method that automatically selects the appropriate
+// verification logic based on AuthConfig.Mode.
+//
+// For AuthModeNone: No verification is performed, returns nil immediately.
+// For AuthModeSimple: Verifies the API secret header matches the configured secret.
+// For AuthModeHMAC: Verifies HMAC signature with timestamp validation and body size checks.
 //
 // Example:
 //
-//	// Use defaults (5 minutes, 10MB)
-//	err := auth.VerifyHMACSignature(req)
+//	// Create auth config
+//	auth := NewAuthConfig(AuthModeSimple, "my-secret")
 //
-//	// Custom max age
-//	err := auth.VerifyHMACSignature(req, WithVerifyMaxAge(10*time.Minute))
+//	// Verify request in middleware
+//	if err := auth.Verify(req); err != nil {
+//	    http.Error(w, "Authentication failed", http.StatusUnauthorized)
+//	    return
+//	}
 //
-//	// Custom body size limit
-//	err := auth.VerifyHMACSignature(req, WithVerifyMaxBodySize(5*1024*1024))
-//
-//	// Multiple options
-//	err := auth.VerifyHMACSignature(req,
+//	// For HMAC mode with custom options
+//	auth := NewAuthConfig(AuthModeHMAC, "hmac-secret")
+//	err := auth.Verify(req,
 //	    WithVerifyMaxAge(10*time.Minute),
 //	    WithVerifyMaxBodySize(5*1024*1024),
 //	)
-func (c *AuthConfig) VerifyHMACSignature(
+func (c *AuthConfig) Verify(req *http.Request, opts ...VerifyOption) error {
+	if c == nil || c.Mode == AuthModeNone || c.Mode == "" {
+		return nil // No authentication required
+	}
+
+	switch c.Mode {
+	case AuthModeSimple:
+		return c.verifySimpleAuth(req)
+	case AuthModeHMAC:
+		return c.verifyHMACSignature(req, opts...)
+	default:
+		return fmt.Errorf("unsupported authentication mode: %s", c.Mode)
+	}
+}
+
+// verifySimpleAuth verifies simple API secret from request (for server-side validation).
+// It checks that the secret in the configured header matches the expected secret.
+// This is an internal method. External users should use Verify() instead.
+func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
+	if c.Secret == "" {
+		return fmt.Errorf("secret is required for simple authentication verification")
+	}
+
+	headerName := c.HeaderName
+	if headerName == "" {
+		headerName = "X-API-Secret"
+	}
+
+	secret := req.Header.Get(headerName)
+	if secret == "" {
+		return fmt.Errorf("missing authentication header: %s", headerName)
+	}
+
+	if secret != c.Secret {
+		return fmt.Errorf("authentication failed: invalid secret")
+	}
+
+	return nil
+}
+
+// verifyHMACSignature verifies HMAC signature from request (for server-side validation).
+// Use WithVerifyMaxAge and WithVerifyMaxBodySize options to customize verification behavior.
+// This is an internal method. External users should use Verify() instead.
+func (c *AuthConfig) verifyHMACSignature(
 	req *http.Request,
 	opts ...VerifyOption,
 ) error {

@@ -142,7 +142,7 @@ func TestAuthRoundTripper_BodyPreservation(t *testing.T) {
 	serverConfig := NewAuthConfig(AuthModeHMAC, testSharedSecret)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify signature
-		if err := serverConfig.VerifyHMACSignature(r); err != nil {
+		if err := serverConfig.Verify(r); err != nil {
 			t.Errorf("Signature verification failed: %v", err)
 			http.Error(w, "Auth failed", http.StatusUnauthorized)
 			return
@@ -521,7 +521,7 @@ func TestAuthRoundTripper_Integration_HMAC(t *testing.T) {
 	serverConfig := NewAuthConfig(AuthModeHMAC, secret)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify signature
-		if err := serverConfig.VerifyHMACSignature(r); err != nil {
+		if err := serverConfig.Verify(r); err != nil {
 			t.Errorf("Signature verification failed: %v", err)
 			http.Error(w, "Auth failed: "+err.Error(), http.StatusUnauthorized)
 			return
