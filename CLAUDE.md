@@ -47,7 +47,7 @@ go tool cover -html=coverage.txt
 **auth.go** (221 lines): Core authentication implementation:
 
 - `AuthConfig`: Main configuration struct with authentication mode, secret, and customizable header names
-- Client-side methods: `AddAuthHeaders()` adds authentication headers to outgoing requests
+- Internal method: `addAuthHeaders()` adds authentication headers (used by authRoundTripper)
 - Server-side methods: `VerifyHMACSignature()` validates incoming requests
 - HMAC signature calculation: `calculateHMACSignature()` computes signatures from timestamp + method + full path (including query) + body
 
@@ -61,18 +61,13 @@ go tool cover -html=coverage.txt
 
 ### Authentication Flow
 
-**Client-side signing (automatic with NewAuthClient):**
+**Client-side signing (automatic):**
 
 1. Create authenticated client: `client := NewAuthClient(mode, secret, ...opts)`
 2. Make requests normally: `client.Get(url)` or `client.Post(url, contentType, body)`
 3. Authentication headers are automatically added by the RoundTripper
 4. Body is automatically read, signed, and restored
-
-**Client-side signing (manual with AddAuthHeaders):**
-
-1. Create `AuthConfig` with mode and secret
-2. Call `AddAuthHeaders(req, body)` before sending request
-3. Headers are added based on mode (simple: one header, HMAC: three headers)
+5. Headers are added based on mode (simple: one header, HMAC: three headers)
 
 **Server-side verification:**
 

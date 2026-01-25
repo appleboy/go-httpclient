@@ -389,7 +389,7 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	}
 
 	// Add authentication headers using existing logic
-	if err := t.config.AddAuthHeaders(req, bodyBytes); err != nil {
+	if err := t.config.addAuthHeaders(req, bodyBytes); err != nil {
 		return nil, fmt.Errorf("failed to add auth headers: %w", err)
 	}
 
@@ -448,9 +448,9 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //	)
 //
 // Note: This implementation reads the entire request body into memory
-// for signature calculation. For large file uploads (>10MB), you should
-// implement custom streaming or chunked authentication (e.g., by using
-// AddAuthHeaders as a building block) instead of relying on full buffering.
+// for signature calculation. For large file uploads (>10MB), consider
+// increasing the MaxBodySize limit or implementing custom authentication
+// logic suited for your specific use case.
 func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	// Apply default configuration
 	options := defaultClientOptions()

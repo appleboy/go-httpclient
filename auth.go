@@ -81,8 +81,9 @@ func NewAuthConfig(mode, secret string) *AuthConfig {
 	}
 }
 
-// AddAuthHeaders adds authentication headers to the HTTP request based on configured mode
-func (c *AuthConfig) AddAuthHeaders(req *http.Request, body []byte) error {
+// addAuthHeaders adds authentication headers to the HTTP request based on configured mode.
+// This is an internal method used by authRoundTripper. External users should use NewAuthClient() instead.
+func (c *AuthConfig) addAuthHeaders(req *http.Request, body []byte) error {
 	if c == nil || c.Mode == AuthModeNone || c.Mode == "" {
 		return nil // No authentication
 	}

@@ -24,7 +24,7 @@ const (
 	testExampleAuthURL = "http://example.com/api/auth"
 )
 
-func TestAuthConfig_AddAuthHeaders_None(t *testing.T) {
+func TestAuthConfig_addAuthHeaders_None(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeNone,
 		Secret: testAPISecret,
@@ -40,9 +40,9 @@ func TestAuthConfig_AddAuthHeaders_None(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 
-	err = config.AddAuthHeaders(req, []byte("test body"))
+	err = config.addAuthHeaders(req, []byte("test body"))
 	if err != nil {
-		t.Errorf("AddAuthHeaders() error = %v, want nil", err)
+		t.Errorf("addAuthHeaders() error = %v, want nil", err)
 	}
 
 	// Should not add any auth headers in none mode
@@ -54,7 +54,7 @@ func TestAuthConfig_AddAuthHeaders_None(t *testing.T) {
 	}
 }
 
-func TestAuthConfig_AddAuthHeaders_Simple(t *testing.T) {
+func TestAuthConfig_addAuthHeaders_Simple(t *testing.T) {
 	tests := []struct {
 		name       string
 		config     *AuthConfig
@@ -105,9 +105,9 @@ func TestAuthConfig_AddAuthHeaders_Simple(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
-			err = tt.config.AddAuthHeaders(req, []byte("test body"))
+			err = tt.config.addAuthHeaders(req, []byte("test body"))
 			if (err != nil) != tt.wantErr {
-				t.Errorf("AddAuthHeaders() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("addAuthHeaders() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
@@ -121,7 +121,7 @@ func TestAuthConfig_AddAuthHeaders_Simple(t *testing.T) {
 	}
 }
 
-func TestAuthConfig_AddAuthHeaders_HMAC(t *testing.T) {
+func TestAuthConfig_addAuthHeaders_HMAC(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
 		Secret: "test-secret-hmac",
@@ -138,9 +138,9 @@ func TestAuthConfig_AddAuthHeaders_HMAC(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 
-	err = config.AddAuthHeaders(req, body)
+	err = config.addAuthHeaders(req, body)
 	if err != nil {
-		t.Fatalf("AddAuthHeaders() error = %v", err)
+		t.Fatalf("addAuthHeaders() error = %v", err)
 	}
 
 	// Check that all required headers are present
@@ -176,7 +176,7 @@ func TestAuthConfig_AddAuthHeaders_HMAC(t *testing.T) {
 	}
 }
 
-func TestAuthConfig_AddAuthHeaders_HMAC_CustomHeaders(t *testing.T) {
+func TestAuthConfig_addAuthHeaders_HMAC_CustomHeaders(t *testing.T) {
 	config := &AuthConfig{
 		Mode:            AuthModeHMAC,
 		Secret:          "test-secret",
@@ -196,9 +196,9 @@ func TestAuthConfig_AddAuthHeaders_HMAC_CustomHeaders(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 
-	err = config.AddAuthHeaders(req, body)
+	err = config.addAuthHeaders(req, body)
 	if err != nil {
-		t.Fatalf("AddAuthHeaders() error = %v", err)
+		t.Fatalf("addAuthHeaders() error = %v", err)
 	}
 
 	// Check custom headers
