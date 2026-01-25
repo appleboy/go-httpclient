@@ -391,6 +391,7 @@ client := httpclient.NewAuthClient(
 - `WithTLSCertFromFile(path)` - Load TLS certificate from file
 - `WithTLSCertFromURL(ctx, url)` - Download TLS certificate from URL (with context for timeout control)
 - `WithTLSCertFromBytes(pem)` - Load TLS certificate from bytes
+- `WithInsecureSkipVerify(bool)` - Skip TLS certificate verification (testing only)
 
 **See full examples:**
 
@@ -437,6 +438,13 @@ client := httpclient.NewAuthClient(
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/root-ca.crt"),
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/intermediate-ca.crt"),
 )
+
+// Skip TLS verification (testing/development only - NOT RECOMMENDED for production)
+client := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithInsecureSkipVerify(true),
+)
 ```
 
 **Key Features:**
@@ -447,6 +455,7 @@ client := httpclient.NewAuthClient(
 - TLS 1.2+ enforced for security
 - 1MB size limit prevents memory exhaustion attacks
 - Configuration errors cause immediate panic for fail-fast behavior
+- Skip TLS verification for testing (use with caution)
 
 **See full example:** [`examples/custom_cert`](examples/custom_cert/)
 
@@ -624,6 +633,7 @@ Configure `NewAuthClient` behavior:
 - `WithTLSCertFromFile(path string)` - Load certificate from file path
 - `WithTLSCertFromURL(ctx context.Context, url string)` - Download certificate from URL with context for timeout control
 - `WithTLSCertFromBytes(certPEM []byte)` - Load certificate from byte content
+- `WithInsecureSkipVerify(skip bool)` - Skip TLS certificate verification (WARNING: Use only for testing/development, never in production)
 
 **Example:**
 
@@ -633,6 +643,13 @@ client := httpclient.NewAuthClient(
     "secret",
     httpclient.WithTimeout(30*time.Second),
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
+)
+
+// For testing with self-signed certificates (NOT for production)
+testClient := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithInsecureSkipVerify(true),
 )
 ```
 

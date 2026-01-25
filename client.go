@@ -37,7 +37,8 @@ type clientOptions struct {
 	skipAuthFunc func(*http.Request) bool
 
 	// TLS certificate options
-	tlsCerts [][]byte // Custom TLS certificates in PEM format
+	tlsCerts           [][]byte // Custom TLS certificates in PEM format
+	insecureSkipVerify bool     // Skip TLS certificate verification
 
 	// Error tracking for option configuration
 	err error
@@ -149,6 +150,22 @@ func WithMaxBodySize(maxBytes int64) ClientOption {
 func WithSkipAuthFunc(fn func(*http.Request) bool) ClientOption {
 	return func(opts *clientOptions) {
 		opts.skipAuthFunc = fn
+	}
+}
+
+// WithInsecureSkipVerify disables TLS certificate verification.
+// This is useful for testing with self-signed certificates or development environments.
+//
+// WARNING: This makes your application vulnerable to man-in-the-middle attacks.
+// Never use this in production environments.
+//
+// Example:
+//
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithInsecureSkipVerify(true))
+func WithInsecureSkipVerify(skip bool) ClientOption {
+	return func(opts *clientOptions) {
+		opts.insecureSkipVerify = skip
 	}
 }
 
@@ -422,6 +439,14 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //	    httpclient.WithTLSCertFromURL(ctx, "https://ca.example.com/cert.pem"),
 //	)
 //
+// Example (skip TLS verification for testing):
+//
+//	client := httpclient.NewAuthClient(
+//	    httpclient.AuthModeHMAC,
+//	    "secret",
+//	    httpclient.WithInsecureSkipVerify(true),
+//	)
+//
 // Note: This implementation reads the entire request body into memory
 // for signature calculation. For large file uploads (>10MB), you should
 // implement custom streaming or chunked authentication (e.g., by using
@@ -440,10 +465,14 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 		panic(fmt.Sprintf("httpclient: failed to configure client: %v", options.err))
 	}
 
-	// Configure TLS if custom certificates are provided
+	// Configure TLS if custom certificates are provided or insecureSkipVerify is set
 	transport := options.transport
-	if len(options.tlsCerts) > 0 {
-		transport = buildTLSTransport(options.transport, options.tlsCerts)
+	if len(options.tlsCerts) > 0 || options.insecureSkipVerify {
+		transport = buildTLSTransport(
+			options.transport,
+			options.tlsCerts,
+			options.insecureSkipVerify,
+		)
 	}
 
 	// Create AuthConfig (internal use)
@@ -471,8 +500,12 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	}
 }
 
-// buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates.
-func buildTLSTransport(baseTransport http.RoundTripper, certs [][]byte) http.RoundTripper {
+// buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates and/or insecure skip verify.
+func buildTLSTransport(
+	baseTransport http.RoundTripper,
+	certs [][]byte,
+	insecureSkipVerify bool,
+) http.RoundTripper {
 	// Start with system cert pool
 	certPool, err := x509.SystemCertPool()
 	if err != nil {
@@ -490,6 +523,9 @@ func buildTLSTransport(baseTransport http.RoundTripper, certs [][]byte) http.Rou
 	tlsConfig := &tls.Config{
 		RootCAs:    certPool,
 		MinVersion: tls.VersionTLS12, // Enforce TLS 1.2 minimum for security
+		// #nosec G402 - InsecureSkipVerify is intentionally configurable via WithInsecureSkipVerify()
+		// for testing/development environments. Production usage warning is documented in the function.
+		InsecureSkipVerify: insecureSkipVerify,
 	}
 
 	// If a base transport is provided, try to clone and modify it
