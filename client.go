@@ -485,6 +485,12 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 		NonceHeader:     options.nonceHeader,
 	}
 
+	// GitHub mode uses different default header
+	if mode == AuthModeGitHub &&
+		(options.signatureHeader == "" || options.signatureHeader == "X-Signature") {
+		config.SignatureHeader = "X-Hub-Signature-256"
+	}
+
 	// Create authRoundTripper
 	authTransport := &authRoundTripper{
 		config:       config,

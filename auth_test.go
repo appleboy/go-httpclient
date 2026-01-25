@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1054,5 +1055,435 @@ func TestAuthConfig_Verify_WithOptions(t *testing.T) {
 	)
 	if err != nil {
 		t.Errorf("Verify() with options error = %v, want nil", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_Success tests successful GitHub signature verification.
+func TestAuthConfig_VerifyGitHubSignature_Success(t *testing.T) {
+	secret := "test-secret" //nolint:goconst // test data
+	body := `{"action":"opened","number":123}`
+
+	// Create request
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// Calculate correct signature
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(body))
+	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+	req.Header.Set("X-Hub-Signature-256", signature)
+
+	// Verify
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req)
+	if err != nil {
+		t.Errorf("Verify() error = %v, want nil", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_InvalidSignature tests rejection of invalid signatures.
+func TestAuthConfig_VerifyGitHubSignature_InvalidSignature(t *testing.T) {
+	secret := "test-secret"
+	body := `{"action":"opened"}`
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("X-Hub-Signature-256", "sha256=invalid_signature")
+
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req)
+
+	if err == nil {
+		t.Error("Verify() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "signature verification failed") {
+		t.Errorf("Verify() error = %v, want error containing 'signature verification failed'", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_MissingHeader tests rejection when signature header is missing.
+func TestAuthConfig_VerifyGitHubSignature_MissingHeader(t *testing.T) {
+	body := `{"test":"data"}` //nolint:goconst // test data
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	auth := NewAuthConfig(AuthModeGitHub, "secret")
+	err = auth.Verify(req)
+
+	if err == nil {
+		t.Error("Verify() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "missing X-Hub-Signature-256 header") {
+		t.Errorf(
+			"Verify() error = %v, want error containing 'missing X-Hub-Signature-256 header'",
+			err,
+		)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_MalformedSignature tests rejection of malformed signatures.
+func TestAuthConfig_VerifyGitHubSignature_MalformedSignature(t *testing.T) {
+	body := `{"test":"data"}`
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("X-Hub-Signature-256", "abcdef1234567890") // No "sha256=" prefix
+
+	auth := NewAuthConfig(AuthModeGitHub, "secret")
+	err = auth.Verify(req)
+
+	if err == nil {
+		t.Error("Verify() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "invalid signature format") {
+		t.Errorf("Verify() error = %v, want error containing 'invalid signature format'", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_BodyPreservation tests that body can be read after verification.
+func TestAuthConfig_VerifyGitHubSignature_BodyPreservation(t *testing.T) {
+	secret := "test-secret"
+	body := `{"test":"data"}`
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// Correct signature
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(body))
+	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+	req.Header.Set("X-Hub-Signature-256", signature)
+
+	// Verify
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req)
+	if err != nil {
+		t.Fatalf("Verify() error = %v, want nil", err)
+	}
+
+	// Read body after verification
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("Failed to read body: %v", err)
+	}
+	if string(bodyBytes) != body {
+		t.Errorf("Body after verification = %q, want %q", string(bodyBytes), body)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_EmptyBody tests that empty body is valid.
+func TestAuthConfig_VerifyGitHubSignature_EmptyBody(t *testing.T) {
+	secret := "test-secret"
+	body := ""
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(body))
+	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+	req.Header.Set("X-Hub-Signature-256", signature)
+
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req)
+	if err != nil {
+		t.Errorf("Verify() error = %v, want nil", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_BodyTooLarge tests rejection of oversized bodies.
+func TestAuthConfig_VerifyGitHubSignature_BodyTooLarge(t *testing.T) {
+	secret := "test-secret"
+	body := strings.Repeat("x", 11*1024*1024) // 11MB > 10MB default limit
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("X-Hub-Signature-256", "sha256=dummy")
+
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req)
+
+	if err == nil {
+		t.Error("Verify() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "request body too large") {
+		t.Errorf("Verify() error = %v, want error containing 'request body too large'", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_CustomBodyLimit tests custom body size limit.
+func TestAuthConfig_VerifyGitHubSignature_CustomBodyLimit(t *testing.T) {
+	secret := "test-secret"
+	body := strings.Repeat("x", 3*1024) // 3KB
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(body))
+	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+	req.Header.Set("X-Hub-Signature-256", signature)
+
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req, WithVerifyMaxBodySize(2*1024)) // 2KB limit
+
+	if err == nil {
+		t.Error("Verify() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "request body too large") {
+		t.Errorf("Verify() error = %v, want error containing 'request body too large'", err)
+	}
+}
+
+// TestAuthConfig_VerifyGitHubSignature_EmptySecret tests rejection when secret is empty.
+func TestAuthConfig_VerifyGitHubSignature_EmptySecret(t *testing.T) {
+	body := `{"test":"data"}`
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("X-Hub-Signature-256", "sha256=abc")
+
+	auth := NewAuthConfig(AuthModeGitHub, "") // Empty secret
+	err = auth.Verify(req)
+
+	if err == nil {
+		t.Error("Verify() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "secret is required") {
+		t.Errorf("Verify() error = %v, want error containing 'secret is required'", err)
+	}
+}
+
+// TestAuthConfig_AddGitHubAuth_Success tests client-side GitHub signature addition.
+func TestAuthConfig_AddGitHubAuth_Success(t *testing.T) {
+	secret := "test-secret"
+	body := []byte(`{"test":"data"}`)
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+
+	err = auth.addGitHubAuth(req, body)
+	if err != nil {
+		t.Errorf("addGitHubAuth() error = %v, want nil", err)
+	}
+
+	// Verify header
+	signature := req.Header.Get("X-Hub-Signature-256")
+	if signature == "" {
+		t.Error("X-Hub-Signature-256 header is empty")
+	}
+	if !strings.HasPrefix(signature, "sha256=") {
+		t.Errorf("Signature = %q, want prefix 'sha256='", signature)
+	}
+
+	// Verify signature correctness
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(body)
+	expected := "sha256=" + hex.EncodeToString(h.Sum(nil))
+	if signature != expected {
+		t.Errorf("Signature = %q, want %q", signature, expected)
+	}
+}
+
+// TestAuthConfig_AddGitHubAuth_EmptySecret tests error when secret is empty.
+func TestAuthConfig_AddGitHubAuth_EmptySecret(t *testing.T) {
+	body := []byte(`{"test":"data"}`)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	auth := NewAuthConfig(AuthModeGitHub, "")
+	err = auth.addGitHubAuth(req, body)
+
+	if err == nil {
+		t.Error("addGitHubAuth() error = nil, want error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "secret is required") {
+		t.Errorf("addGitHubAuth() error = %v, want error containing 'secret is required'", err)
+	}
+}
+
+// TestAuthConfig_GitHubMode_EndToEnd tests end-to-end client signing and server verification.
+func TestAuthConfig_GitHubMode_EndToEnd(t *testing.T) {
+	secret := "test-secret"
+	payload := []byte(`{"action":"opened","pull_request":{"id":123}}`)
+
+	// Create test server with GitHub verification
+	serverConfig := NewAuthConfig(AuthModeGitHub, secret)
+	server := http.NewServeMux()
+	server.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
+		// Verify signature
+		if err := serverConfig.Verify(r); err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		// Read body after verification
+		body, _ := io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	})
+
+	// #nosec G112 - ReadHeaderTimeout not needed for test server
+	ts := http.Server{Handler: server}
+	// #nosec G102 - Binding to all interfaces (":0") is safe for test server
+	lc := net.ListenConfig{}
+	listener, err := lc.Listen(context.Background(), "tcp", ":0")
+	if err != nil {
+		t.Fatalf("Failed to listen: %v", err)
+	}
+	defer listener.Close()
+
+	go func() {
+		_ = ts.Serve(listener)
+	}()
+	defer func() {
+		_ = ts.Shutdown(context.Background())
+	}()
+
+	// Give server time to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Create client
+	client := NewAuthClient(AuthModeGitHub, secret)
+
+	// Create and send request
+	req, _ := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"http://"+listener.Addr().String()+"/webhook",
+		bytes.NewReader(payload),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Verify response
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf(
+			"Response status = %d, want %d. Body: %s",
+			resp.StatusCode,
+			http.StatusOK,
+			string(body),
+		)
+	}
+
+	// Verify response body matches
+	respBody, _ := io.ReadAll(resp.Body)
+	if !bytes.Equal(respBody, payload) {
+		t.Errorf("Response body = %q, want %q", string(respBody), string(payload))
+	}
+}
+
+// TestAuthConfig_GitHubMode_PythonCompatibility tests compatibility with Python HMAC implementation.
+func TestAuthConfig_GitHubMode_PythonCompatibility(t *testing.T) {
+	// Test vectors that would match Python's implementation:
+	// hmac.new(b'test-webhook-secret', msg=b'{"action":"opened","number":42}', digestmod=hashlib.sha256).hexdigest()
+	// #nosec G101 - Hardcoded secret is intentional for test
+	secret := "test-webhook-secret"
+	payload := `{"action":"opened","number":42}`
+
+	// Go calculation
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(payload))
+	goSignature := "sha256=" + hex.EncodeToString(h.Sum(nil))
+
+	// Create request
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		"POST",
+		"/webhook",
+		strings.NewReader(payload),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("X-Hub-Signature-256", goSignature)
+
+	// Verify
+	auth := NewAuthConfig(AuthModeGitHub, secret)
+	err = auth.Verify(req)
+	if err != nil {
+		t.Errorf("Verify() error = %v, want nil (Python-compatible signature failed)", err)
 	}
 }

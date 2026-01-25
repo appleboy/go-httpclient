@@ -16,7 +16,7 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
   - [Table of Contents](#table-of-contents)
   - [Why](#why)
   - [What](#what)
-    - [Three Authentication Modes](#three-authentication-modes)
+    - [Four Authentication Modes](#four-authentication-modes)
     - [Key Benefits](#key-benefits)
   - [How](#how)
     - [Installation](#installation)
@@ -25,6 +25,7 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [No Authentication](#no-authentication)
       - [Simple API Key Authentication](#simple-api-key-authentication)
       - [HMAC Signature Authentication](#hmac-signature-authentication)
+      - [GitHub Webhook-Style Authentication](#github-webhook-style-authentication)
       - [Custom Header Names](#custom-header-names)
       - [Server-Side Verification](#server-side-verification)
       - [Automatic Authentication with RoundTripper](#automatic-authentication-with-roundtripper)
@@ -78,7 +79,7 @@ Without proper authentication, your APIs are vulnerable to:
 
 **go-httpclient** is a Go package that provides **configurable HTTP authentication mechanisms** for both client-side request signing and server-side request verification.
 
-### Three Authentication Modes
+### Four Authentication Modes
 
 1. **None Mode** (`AuthModeNone`)
    - No authentication headers added
@@ -95,6 +96,13 @@ Without proper authentication, your APIs are vulnerable to:
    - Includes request method, path, query parameters, and body in signature
    - Built-in replay attack prevention with timestamp validation
    - Default headers: `X-Signature`, `X-Timestamp`, `X-Nonce` (all customizable)
+
+4. **GitHub Mode** (`AuthModeGitHub`)
+   - GitHub webhook-compatible HMAC-SHA256 signatures
+   - Single header with "sha256=" prefix format
+   - Signature includes only request body (compatible with GitHub webhooks)
+   - Default header: `X-Hub-Signature-256` (customizable)
+   - No timestamp validation (use HTTPS and regular secret rotation)
 
 ### Key Benefits
 
@@ -220,6 +228,68 @@ signature = HMAC-SHA256("shared-secret", message)
 ```
 
 **See full example:** [`_example/02-hmac-auth`](_example/02-hmac-auth/)
+
+#### GitHub Webhook-Style Authentication
+
+GitHub mode provides compatibility with GitHub webhook signature format and other webhook providers using similar HMAC-SHA256 patterns:
+
+```go
+// Create client with GitHub-style authentication
+client := httpclient.NewAuthClient(httpclient.AuthModeGitHub, "webhook-secret")
+
+// Make requests - authentication is automatic
+payload := []byte(`{"action":"opened","pull_request":{"id":123}}`)
+resp, err := client.Post(
+    "https://api.example.com/webhook",
+    "application/json",
+    bytes.NewReader(payload),
+)
+
+// Request will automatically include:
+// X-Hub-Signature-256: sha256=a3c8f9b2... (GitHub-style signature)
+```
+
+**Server-side verification:**
+
+```go
+func webhookHandler(w http.ResponseWriter, r *http.Request) {
+    // Create auth config with GitHub mode
+    auth := httpclient.NewAuthConfig(httpclient.AuthModeGitHub, "webhook-secret")
+
+    // Verify signature
+    if err := auth.Verify(r); err != nil {
+        http.Error(w, "Invalid signature", http.StatusUnauthorized)
+        return
+    }
+
+    // Body is preserved after verification
+    body, _ := io.ReadAll(r.Body)
+    var payload map[string]interface{}
+    json.Unmarshal(body, &payload)
+
+    log.Printf("Received webhook: %v", payload)
+    w.WriteHeader(http.StatusOK)
+}
+```
+
+**Key differences from HMAC mode:**
+
+| Feature                  | HMAC Mode                                | GitHub Mode                                      |
+| ------------------------ | ---------------------------------------- | ------------------------------------------------ |
+| Signature content        | timestamp + method + path + query + body | body only                                        |
+| Signature format         | hex digest (64 chars)                    | "sha256=" + hex digest (71 chars)                |
+| Headers                  | 3 (X-Signature, X-Timestamp, X-Nonce)    | 1 (X-Hub-Signature-256)                          |
+| Timestamp validation     | ✅ Yes (±5 minutes)                      | ❌ No                                            |
+| Replay attack protection | ✅ Yes                                   | ⚠️ Limited (HTTPS + secret rotation recommended) |
+
+**Security notes:**
+
+- GitHub mode does NOT validate timestamps (GitHub webhooks don't provide them)
+- Always use HTTPS to protect the secret in transit
+- Regularly rotate webhook secrets to mitigate replay attack risks
+- Default body size limit (10MB) protects against DoS attacks
+
+**See full example:** [`_example/08-github-webhook`](_example/08-github-webhook/)
 
 #### Custom Header Names
 
