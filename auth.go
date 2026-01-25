@@ -24,6 +24,15 @@ const (
 	AuthModeGitHub = "github" // GitHub webhook-style HMAC-SHA256 signature
 )
 
+// Default header name constants
+const (
+	DefaultAPISecretHeader       = "X-API-Secret"        // Default header for simple mode
+	DefaultSignatureHeader       = "X-Signature"         // Default signature header for HMAC mode
+	DefaultTimestampHeader       = "X-Timestamp"         // Default timestamp header for HMAC mode
+	DefaultNonceHeader           = "X-Nonce"             // Default nonce header for HMAC mode
+	DefaultGitHubSignatureHeader = "X-Hub-Signature-256" // Default signature header for GitHub mode
+)
+
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
 	Mode            string // "none", "simple", or "hmac"
@@ -76,15 +85,15 @@ func NewAuthConfig(mode, secret string) *AuthConfig {
 	config := &AuthConfig{
 		Mode:            mode,
 		Secret:          secret,
-		HeaderName:      "X-API-Secret",
-		SignatureHeader: "X-Signature",
-		TimestampHeader: "X-Timestamp",
-		NonceHeader:     "X-Nonce",
+		HeaderName:      DefaultAPISecretHeader,
+		SignatureHeader: DefaultSignatureHeader,
+		TimestampHeader: DefaultTimestampHeader,
+		NonceHeader:     DefaultNonceHeader,
 	}
 
 	// GitHub mode uses different default header
 	if mode == AuthModeGitHub {
-		config.SignatureHeader = "X-Hub-Signature-256" //nolint:goconst // GitHub-specific header
+		config.SignatureHeader = DefaultGitHubSignatureHeader
 	}
 
 	return config
@@ -117,7 +126,7 @@ func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
 
 	headerName := c.HeaderName
 	if headerName == "" {
-		headerName = "X-API-Secret"
+		headerName = DefaultAPISecretHeader
 	}
 
 	req.Header.Set(headerName, c.Secret)
@@ -145,17 +154,17 @@ func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
 	// Set headers
 	signatureHeader := c.SignatureHeader
 	if signatureHeader == "" {
-		signatureHeader = "X-Signature" //nolint:goconst // default HMAC header
+		signatureHeader = DefaultSignatureHeader
 	}
 
 	timestampHeader := c.TimestampHeader
 	if timestampHeader == "" {
-		timestampHeader = "X-Timestamp"
+		timestampHeader = DefaultTimestampHeader
 	}
 
 	nonceHeader := c.NonceHeader
 	if nonceHeader == "" {
-		nonceHeader = "X-Nonce"
+		nonceHeader = DefaultNonceHeader
 	}
 
 	req.Header.Set(signatureHeader, signature)
@@ -180,7 +189,7 @@ func (c *AuthConfig) addGitHubAuth(req *http.Request, body []byte) error {
 	// Set single header
 	signatureHeader := c.SignatureHeader
 	if signatureHeader == "" {
-		signatureHeader = "X-Hub-Signature-256"
+		signatureHeader = DefaultGitHubSignatureHeader
 	}
 	req.Header.Set(signatureHeader, signature)
 
@@ -269,7 +278,7 @@ func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 
 	headerName := c.HeaderName
 	if headerName == "" {
-		headerName = "X-API-Secret"
+		headerName = DefaultAPISecretHeader
 	}
 
 	secret := req.Header.Get(headerName)
@@ -304,12 +313,12 @@ func (c *AuthConfig) verifyHMACSignature(
 	// Get headers
 	signatureHeader := c.SignatureHeader
 	if signatureHeader == "" {
-		signatureHeader = "X-Signature"
+		signatureHeader = DefaultSignatureHeader
 	}
 
 	timestampHeader := c.TimestampHeader
 	if timestampHeader == "" {
-		timestampHeader = "X-Timestamp"
+		timestampHeader = DefaultTimestampHeader
 	}
 
 	signature := req.Header.Get(signatureHeader)
@@ -402,7 +411,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	// Get signature header
 	signatureHeader := c.SignatureHeader
 	if signatureHeader == "" {
-		signatureHeader = "X-Hub-Signature-256"
+		signatureHeader = DefaultGitHubSignatureHeader
 	}
 	signature := req.Header.Get(signatureHeader)
 	if signature == "" {

@@ -48,10 +48,10 @@ type clientOptions struct {
 func defaultClientOptions() *clientOptions {
 	return &clientOptions{
 		// Authentication defaults (consistent with NewAuthConfig)
-		headerName:      "X-API-Secret",
-		signatureHeader: "X-Signature",
-		timestampHeader: "X-Timestamp",
-		nonceHeader:     "X-Nonce",
+		headerName:      DefaultAPISecretHeader,
+		signatureHeader: DefaultSignatureHeader,
+		timestampHeader: DefaultTimestampHeader,
+		nonceHeader:     DefaultNonceHeader,
 
 		// Client behavior defaults
 		transport:    nil, // Will use http.DefaultTransport if not specified
@@ -487,8 +487,8 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 
 	// GitHub mode uses different default header
 	if mode == AuthModeGitHub &&
-		(options.signatureHeader == "" || options.signatureHeader == "X-Signature") {
-		config.SignatureHeader = "X-Hub-Signature-256"
+		(options.signatureHeader == "" || options.signatureHeader == DefaultSignatureHeader) {
+		config.SignatureHeader = DefaultGitHubSignatureHeader
 	}
 
 	// Create authRoundTripper
