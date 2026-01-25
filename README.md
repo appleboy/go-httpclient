@@ -494,7 +494,7 @@ client := httpclient.NewAuthClient(
 - Configuration errors cause immediate panic for fail-fast behavior
 - Skip TLS verification for testing (use with caution)
 
-**See full example:** [`examples/custom_cert`](examples/custom_cert/)
+**See full example:** [`_example/08-custom-cert`](_example/08-custom-cert/)
 
 ## Features
 
@@ -852,9 +852,8 @@ go tool cover -html=coverage.txt
 │   ├── 04-server-verification/   # Server-side verification
 │   ├── 05-roundtripper-client/   # Automatic authentication
 │   ├── 06-options-showcase/      # Configuration options
-│   └── 07-transport-chaining/    # Transport composition
-├── examples/           # Additional examples
-│   └── custom_cert/    # Custom TLS certificate examples
+│   ├── 07-transport-chaining/    # Transport composition
+│   └── 08-custom-cert/           # Custom TLS certificates
 └── .github/workflows/  # CI/CD pipelines
     ├── testing.yml     # Multi-platform testing
     ├── security.yml    # Trivy security scanning

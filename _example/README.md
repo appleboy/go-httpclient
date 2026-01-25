@@ -4,12 +4,16 @@ This directory contains practical examples demonstrating different authenticatio
 
 ## Examples Overview
 
-| Example                                           | Description                   | Key Features                                   |
-| ------------------------------------------------- | ----------------------------- | ---------------------------------------------- |
-| [01-simple-auth](01-simple-auth/)                 | Simple API Key Authentication | Basic API secret in header, easy setup         |
-| [02-hmac-auth](02-hmac-auth/)                     | HMAC Signature Authentication | Cryptographic signatures, replay protection    |
-| [03-custom-headers](03-custom-headers/)           | Custom Header Names           | Customize header names for compatibility       |
-| [04-server-verification](04-server-verification/) | Server-Side Verification      | Complete server with authentication middleware |
+| Example                                           | Description                     | Key Features                                      |
+| ------------------------------------------------- | ------------------------------- | ------------------------------------------------- |
+| [01-simple-auth](01-simple-auth/)                 | Simple API Key Authentication   | Basic API secret in header, easy setup            |
+| [02-hmac-auth](02-hmac-auth/)                     | HMAC Signature Authentication   | Cryptographic signatures, replay protection       |
+| [03-custom-headers](03-custom-headers/)           | Custom Header Names             | Customize header names for compatibility          |
+| [04-server-verification](04-server-verification/) | Server-Side Verification        | Complete server with authentication middleware    |
+| [05-roundtripper-client](05-roundtripper-client/) | RoundTripper-based Client       | Automatic authentication, transparent integration |
+| [06-options-showcase](06-options-showcase/)       | Configuration Options           | Timeout, body limits, custom headers showcase     |
+| [07-transport-chaining](07-transport-chaining/)   | Transport Middleware Chaining   | Combine logging, metrics with authentication      |
+| [08-custom-cert](08-custom-cert/)                 | Custom TLS Certificates         | Enterprise CA, self-signed certs support          |
 
 ## Quick Start
 
@@ -69,10 +73,19 @@ Each example directory contains:
 
 We recommend going through the examples in order:
 
-1. **Start with 01-simple-auth** - Understand basic authentication
-2. **Move to 02-hmac-auth** - Learn cryptographic signatures
-3. **Try 03-custom-headers** - Customize for your needs
-4. **Study 04-server-verification** - Implement server-side protection
+### Beginner Track (Authentication Basics)
+
+1. **01-simple-auth** - Understand basic authentication
+2. **02-hmac-auth** - Learn cryptographic signatures
+3. **03-custom-headers** - Customize for your needs
+4. **04-server-verification** - Implement server-side protection
+
+### Advanced Track (Client Configuration & Integration)
+
+5. **05-roundtripper-client** - Learn RoundTripper pattern for automatic authentication
+6. **06-options-showcase** - Explore all configuration options
+7. **07-transport-chaining** - Chain multiple transports for logging/metrics
+8. **08-custom-cert** - Handle custom TLS certificates for enterprise environments
 
 ## Additional Resources
 
