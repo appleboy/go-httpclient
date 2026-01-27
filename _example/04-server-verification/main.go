@@ -86,7 +86,10 @@ func dataHandler(w http.ResponseWriter, r *http.Request) {
 // sendValidRequest sends a properly authenticated request
 func sendValidRequest() {
 	// Create authenticated HTTP client
-	client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "shared-secret-key")
+	client, err := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "shared-secret-key")
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	reqBody := []byte(`{"action": "read", "resource": "data"}`)
 	req, _ := http.NewRequest(

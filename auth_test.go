@@ -1420,7 +1420,10 @@ func TestAuthConfig_GitHubMode_EndToEnd(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Create client
-	client := NewAuthClient(AuthModeGitHub, secret)
+	client, err := NewAuthClient(AuthModeGitHub, secret)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Create and send request
 	req, _ := http.NewRequestWithContext(

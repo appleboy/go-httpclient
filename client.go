@@ -40,8 +40,12 @@ type clientOptions struct {
 	tlsCerts           [][]byte // Custom TLS certificates in PEM format
 	insecureSkipVerify bool     // Skip TLS certificate verification
 
-	// Error tracking for option configuration
-	err error
+	// mTLS client certificate options
+	clientCertPEM []byte // Client certificate in PEM format
+	clientKeyPEM  []byte // Client private key in PEM format
+
+	// Error tracking
+	errors []error // Errors collected from options
 }
 
 // defaultClientOptions returns a clientOptions struct with sensible defaults.
@@ -215,24 +219,28 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 			nil,
 		)
 		if err != nil {
-			opts.err = fmt.Errorf("failed to create request for %s: %w", url, err)
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to create request for TLS cert from %s: %w", url, err),
+			)
 			return
 		}
 
 		// #nosec G107 - URL is provided by the user, not external input
 		resp, err := secureClient.Do(req)
 		if err != nil {
-			// Store error for later handling in NewAuthClient
-			opts.err = fmt.Errorf("failed to download certificate from %s: %w", url, err)
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to download TLS cert from %s: %w", url, err),
+			)
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			opts.err = fmt.Errorf(
-				"failed to download certificate from %s: HTTP %d",
-				url,
-				resp.StatusCode,
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to download TLS cert from %s: HTTP %d", url, resp.StatusCode),
 			)
 			return
 		}
@@ -242,22 +250,23 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		limitedReader := io.LimitReader(resp.Body, maxCertSize+1)
 		certPEM, err := io.ReadAll(limitedReader)
 		if err != nil {
-			opts.err = fmt.Errorf(
-				"failed to read certificate from %s (max %d bytes): %w",
-				url,
-				maxCertSize,
-				err,
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to read TLS cert from %s: %w", url, err),
 			)
 			return
 		}
 
 		// Check if the certificate exceeds the maximum allowed size
 		if int64(len(certPEM)) > maxCertSize {
-			opts.err = fmt.Errorf(
-				"certificate from %s exceeds maximum size of %d bytes (got %d bytes)",
-				url,
-				maxCertSize,
-				len(certPEM),
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf(
+					"certificate from %s exceeds maximum size of %d bytes (got %d bytes)",
+					url,
+					maxCertSize,
+					len(certPEM),
+				),
 			)
 			return
 		}
@@ -281,18 +290,23 @@ func WithTLSCertFromFile(path string) ClientOption {
 	return func(opts *clientOptions) {
 		certPEM, err := os.ReadFile(path)
 		if err != nil {
-			// Store error for later handling in NewAuthClient
-			opts.err = fmt.Errorf("failed to read certificate from file %s: %w", path, err)
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to read TLS cert from %s: %w", path, err),
+			)
 			return
 		}
 
 		// Check if the certificate file exceeds the maximum allowed size
 		if int64(len(certPEM)) > maxCertSize {
-			opts.err = fmt.Errorf(
-				"certificate file %s exceeds maximum size of %d bytes (got %d bytes)",
-				path,
-				maxCertSize,
-				len(certPEM),
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf(
+					"certificate file %s exceeds maximum size of %d bytes (got %d bytes)",
+					path,
+					maxCertSize,
+					len(certPEM),
+				),
 			)
 			return
 		}
@@ -319,15 +333,100 @@ func WithTLSCertFromBytes(certPEM []byte) ClientOption {
 	return func(opts *clientOptions) {
 		// Check if the certificate exceeds the maximum allowed size
 		if int64(len(certPEM)) > maxCertSize {
-			opts.err = fmt.Errorf(
-				"certificate exceeds maximum size of %d bytes (got %d bytes)",
-				maxCertSize,
-				len(certPEM),
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf(
+					"certificate exceeds maximum size of %d bytes (got %d bytes)",
+					maxCertSize,
+					len(certPEM),
+				),
 			)
 			return
 		}
 
 		opts.tlsCerts = append(opts.tlsCerts, certPEM)
+	}
+}
+
+// WithMTLSFromFile loads a client certificate and private key from files for mTLS
+// (mutual TLS) authentication. The certificate and key must be in PEM format.
+//
+// mTLS provides two-way authentication where both the client and server verify
+// each other's identity using certificates.
+//
+// Example:
+//
+//	client, err := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithMTLSFromFile("/path/to/client.crt", "/path/to/client.key"))
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+func WithMTLSFromFile(certPath, keyPath string) ClientOption {
+	return func(opts *clientOptions) {
+		certPEM, err := os.ReadFile(certPath)
+		if err != nil {
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to read mTLS cert from %s: %w", certPath, err),
+			)
+			return
+		}
+
+		keyPEM, err := os.ReadFile(keyPath)
+		if err != nil {
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf("failed to read mTLS key from %s: %w", keyPath, err),
+			)
+			return
+		}
+
+		// Validate that the cert and key pair is valid
+		_, err = tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			opts.errors = append(
+				opts.errors,
+				fmt.Errorf(
+					"invalid mTLS cert/key pair from files %s and %s: %w",
+					certPath,
+					keyPath,
+					err,
+				),
+			)
+			return
+		}
+
+		opts.clientCertPEM = certPEM
+		opts.clientKeyPEM = keyPEM
+	}
+}
+
+// WithMTLSFromBytes loads a client certificate and private key from byte content
+// for mTLS (mutual TLS) authentication. The certificate and key must be in PEM format.
+//
+// mTLS provides two-way authentication where both the client and server verify
+// each other's identity using certificates.
+//
+// Example:
+//
+//	certPEM := []byte(`-----BEGIN CERTIFICATE-----...-----END CERTIFICATE-----`)
+//	keyPEM := []byte(`-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----`)
+//	client, err := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithMTLSFromBytes(certPEM, keyPEM))
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+func WithMTLSFromBytes(certPEM, keyPEM []byte) ClientOption {
+	return func(opts *clientOptions) {
+		// Validate that the cert and key pair is valid
+		_, err := tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			opts.errors = append(opts.errors, fmt.Errorf("invalid mTLS cert/key pair: %w", err))
+			return
+		}
+
+		opts.clientCertPEM = certPEM
+		opts.clientKeyPEM = keyPEM
 	}
 }
 
@@ -412,14 +511,20 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //   - secret: Shared secret key for authentication
 //   - opts: Optional configuration (timeout, custom headers, etc.)
 //
+// Returns an error if any option fails (e.g., certificate file not found,
+// invalid mTLS certificate pair, or failed to download certificate from URL).
+//
 // Example (minimal):
 //
-//	client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "secret")
+//	client, err := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "secret")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //	resp, err := client.Get("https://api.example.com/data")
 //
 // Example (with options):
 //
-//	client := httpclient.NewAuthClient(
+//	client, err := httpclient.NewAuthClient(
 //	    httpclient.AuthModeHMAC,
 //	    "secret",
 //	    httpclient.WithTimeout(10*time.Second),
@@ -428,30 +533,49 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 //	        return strings.HasPrefix(req.URL.Path, "/health")
 //	    }),
 //	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //
 // Example (with custom TLS certificate):
 //
 //	ctx := context.Background()
-//	client := httpclient.NewAuthClient(
+//	client, err := httpclient.NewAuthClient(
 //	    httpclient.AuthModeHMAC,
 //	    "secret",
 //	    httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
 //	    httpclient.WithTLSCertFromURL(ctx, "https://ca.example.com/cert.pem"),
 //	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //
 // Example (skip TLS verification for testing):
 //
-//	client := httpclient.NewAuthClient(
+//	client, err := httpclient.NewAuthClient(
 //	    httpclient.AuthModeHMAC,
 //	    "secret",
 //	    httpclient.WithInsecureSkipVerify(true),
 //	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//
+// Example (with mTLS):
+//
+//	client, err := httpclient.NewAuthClient(
+//	    httpclient.AuthModeHMAC,
+//	    "secret",
+//	    httpclient.WithMTLSFromFile("/path/to/client.crt", "/path/to/client.key"),
+//	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
 //
 // Note: This implementation reads the entire request body into memory
 // for signature calculation. For large file uploads (>10MB), consider
-// increasing the MaxBodySize limit or implementing custom authentication
-// logic suited for your specific use case.
-func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
+// using AddAuthHeaders directly with streaming.
+func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, error) {
 	// Apply default configuration
 	options := defaultClientOptions()
 
@@ -460,17 +584,21 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 		opt(options)
 	}
 
-	// Check if any option encountered an error during configuration
-	if options.err != nil {
-		panic(fmt.Sprintf("httpclient: failed to configure client: %v", options.err))
+	// Check for errors from options
+	if len(options.errors) > 0 {
+		return nil, options.errors[0]
 	}
 
-	// Configure TLS if custom certificates are provided or insecureSkipVerify is set
+	// Configure TLS if custom certificates, mTLS, or insecureSkipVerify are provided
 	transport := options.transport
-	if len(options.tlsCerts) > 0 || options.insecureSkipVerify {
+	if len(options.tlsCerts) > 0 ||
+		(len(options.clientCertPEM) > 0 && len(options.clientKeyPEM) > 0) ||
+		options.insecureSkipVerify {
 		transport = buildTLSTransport(
 			options.transport,
 			options.tlsCerts,
+			options.clientCertPEM,
+			options.clientKeyPEM,
 			options.insecureSkipVerify,
 		)
 	}
@@ -503,13 +631,15 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client {
 	return &http.Client{
 		Transport: authTransport,
 		Timeout:   options.timeout,
-	}
+	}, nil
 }
 
-// buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates and/or insecure skip verify.
+// buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates,
+// optional mTLS client certificates, and/or insecure skip verify.
 func buildTLSTransport(
 	baseTransport http.RoundTripper,
 	certs [][]byte,
+	clientCertPEM, clientKeyPEM []byte,
 	insecureSkipVerify bool,
 ) http.RoundTripper {
 	// Start with system cert pool
@@ -525,10 +655,23 @@ func buildTLSTransport(
 		certPool.AppendCertsFromPEM(certPEM)
 	}
 
-	// Create TLS config with custom cert pool
+	// Prepare mTLS client certificates if provided
+	var clientCerts []tls.Certificate
+	if len(clientCertPEM) > 0 && len(clientKeyPEM) > 0 {
+		cert, err := tls.X509KeyPair(clientCertPEM, clientKeyPEM)
+		if err != nil {
+			// This should not happen as we validate in the option function
+			// But handle it defensively by skipping the client cert
+		} else {
+			clientCerts = append(clientCerts, cert)
+		}
+	}
+
+	// Create TLS config with custom cert pool, client certificates, and insecure skip verify
 	tlsConfig := &tls.Config{
-		RootCAs:    certPool,
-		MinVersion: tls.VersionTLS12, // Enforce TLS 1.2 minimum for security
+		RootCAs:      certPool,
+		Certificates: clientCerts,
+		MinVersion:   tls.VersionTLS12, // Enforce TLS 1.2 minimum for security
 		// #nosec G402 - InsecureSkipVerify is intentionally configurable via WithInsecureSkipVerify()
 		// for testing/development environments. Production usage warning is documented in the function.
 		InsecureSkipVerify: insecureSkipVerify,

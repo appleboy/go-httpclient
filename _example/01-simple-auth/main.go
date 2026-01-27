@@ -12,7 +12,10 @@ import (
 func main() {
 	// Create HTTP client with simple authentication mode
 	// Authentication headers are added automatically to all requests
-	client := httpclient.NewAuthClient(httpclient.AuthModeSimple, "my-secret-api-key")
+	client, err := httpclient.NewAuthClient(httpclient.AuthModeSimple, "my-secret-api-key")
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Create HTTP request
 	reqBody := []byte(`{"name": "John Doe", "email": "john@example.com"}`)

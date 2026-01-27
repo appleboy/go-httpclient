@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ func main() {
 	fmt.Println("=== RoundTripper-based HTTP Client Example ===")
 
 	// One-line client creation with all configurations!
-	_ = httpclient.NewAuthClient(
+	client, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC, // Authentication mode
 		"my-shared-secret",      // Shared secret
 		httpclient.WithTimeout(10*time.Second),
@@ -25,7 +26,11 @@ func main() {
 			return strings.HasPrefix(req.URL.Path, "/health")
 		}),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
+	_ = client // Used in commented examples
 	// Example 1: POST request with JSON body
 	fmt.Println("Example 1: POST with JSON body")
 	body := []byte(`{"username": "john", "action": "login"}`)
