@@ -392,7 +392,10 @@ The simplest way to use this package - create an HTTP client that automatically 
 
 ```go
 // Create authenticated client with automatic signing
-client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "secret")
+client, err := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "secret")
+if err != nil {
+    log.Fatal(err)
+}
 
 // Use it like a normal http.Client - authentication is automatic!
 resp, err := client.Post(
@@ -405,7 +408,7 @@ resp, err := client.Post(
 **With Configuration Options:**
 
 ```go
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithTimeout(10*time.Second),
@@ -415,6 +418,9 @@ client := httpclient.NewAuthClient(
         return strings.HasPrefix(req.URL.Path, "/health")
     }),
 )
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 **Available Options:**
@@ -429,6 +435,8 @@ client := httpclient.NewAuthClient(
 - `WithTLSCertFromURL(ctx, url)` - Download TLS certificate from URL (with context for timeout control)
 - `WithTLSCertFromBytes(pem)` - Load TLS certificate from bytes
 - `WithInsecureSkipVerify(bool)` - Skip TLS certificate verification (testing only)
+- `WithMTLSFromFile(certPath, keyPath)` - Load mTLS client certificate from files
+- `WithMTLSFromBytes(certPEM, keyPEM)` - Load mTLS client certificate from bytes
 
 **See full examples:**
 
@@ -442,46 +450,61 @@ For enterprise environments with custom Certificate Authorities or self-signed c
 
 ```go
 // Load certificate from file
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/company-ca.crt"),
 )
+if err != nil {
+    log.Fatal(err)
+}
 
 // Load certificate from URL with timeout control
 ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 defer cancel()
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithTLSCertFromURL(ctx, "https://internal-ca.company.com/ca.crt"),
 )
+if err != nil {
+    log.Fatal(err)
+}
 
 // Load certificate from embedded content
 certPEM := []byte(`-----BEGIN CERTIFICATE-----
 MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKmdMA0GCSqGSIb3DQEBCwUAMEUx...
 -----END CERTIFICATE-----`)
 
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithTLSCertFromBytes(certPEM),
 )
+if err != nil {
+    log.Fatal(err)
+}
 
 // Load multiple certificates for certificate chain
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/root-ca.crt"),
     httpclient.WithTLSCertFromFile("/etc/ssl/certs/intermediate-ca.crt"),
 )
+if err != nil {
+    log.Fatal(err)
+}
 
 // Skip TLS verification (testing/development only - NOT RECOMMENDED for production)
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithInsecureSkipVerify(true),
 )
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 **Key Features:**
@@ -496,6 +519,56 @@ client := httpclient.NewAuthClient(
 
 **See full example:** [`_example/08-custom-cert`](_example/08-custom-cert/)
 
+#### mTLS (Mutual TLS) Support
+
+Mutual TLS provides two-way authentication where both client and server verify each other's identity using certificates. This is commonly used in service-to-service communication and zero-trust architectures.
+
+```go
+// Load mTLS certificate from files
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithMTLSFromFile("/path/to/client.crt", "/path/to/client.key"),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Load mTLS certificate from byte content
+certPEM, _ := os.ReadFile("client.crt")
+keyPEM, _ := os.ReadFile("client.key")
+
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithMTLSFromBytes(certPEM, keyPEM),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Combine mTLS with custom CA certificate
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTLSCertFromFile("/path/to/ca.crt"),              // Trust server's CA
+    httpclient.WithMTLSFromFile("/path/to/client.crt", "/path/to/client.key"), // Client cert
+)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+**Key Features:**
+
+- Load client certificates from files or byte content
+- Automatic certificate validation (cert/key pair must match)
+- Combine with custom CA certificates for complete mTLS setup
+- Error reporting for invalid certificates or missing files
+- Compatible with all other client options
+
+**See full example:** [`_example/09-mtls`](_example/09-mtls/)
+
 ## Features
 
 - **Automatic Authentication**: RoundTripper-based client signs requests automatically
@@ -504,6 +577,7 @@ client := httpclient.NewAuthClient(
   - **Verification Options**: `WithVerifyMaxAge`, `WithVerifyMaxBodySize` for per-endpoint control
 - **Multiple Authentication Strategies**: Choose between none, simple, or HMAC modes
 - **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content
+- **mTLS Support**: Client certificate authentication for mutual TLS
 - **Enterprise PKI Support**: Trust custom Certificate Authorities and self-signed certificates
 - **Cryptographic Security**: HMAC-SHA256 signatures with constant-time comparison
 - **Replay Attack Protection**: Timestamp validation prevents reuse of old requests

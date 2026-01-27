@@ -12,7 +12,10 @@ import (
 func main() {
 	// Create HTTP client with HMAC authentication mode
 	// Authentication headers are added automatically to all requests
-	client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "my-shared-secret")
+	client, err := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "my-shared-secret")
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Create HTTP request with query parameters
 	reqBody := []byte(`{"action": "create", "resource": "user"}`)

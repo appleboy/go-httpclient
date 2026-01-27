@@ -17,7 +17,10 @@ const (
 
 // TestNewAuthClient_NoneMode tests client creation with no authentication
 func TestNewAuthClient_NoneMode(t *testing.T) {
-	client := NewAuthClient(AuthModeNone, "")
+	client, err := NewAuthClient(AuthModeNone, "")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	if client == nil {
 		t.Fatal("Expected non-nil client")
@@ -48,7 +51,10 @@ func TestNewAuthClient_NoneMode(t *testing.T) {
 // TestNewAuthClient_SimpleMode tests client with simple authentication
 func TestNewAuthClient_SimpleMode(t *testing.T) {
 	secret := "test-secret-key"
-	client := NewAuthClient(AuthModeSimple, secret)
+	client, err := NewAuthClient(AuthModeSimple, secret)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify auth header
@@ -74,7 +80,10 @@ func TestNewAuthClient_SimpleMode(t *testing.T) {
 // TestNewAuthClient_HMACMode tests client with HMAC authentication
 func TestNewAuthClient_HMACMode(t *testing.T) {
 	secret := "testSharedSecret"
-	client := NewAuthClient(AuthModeHMAC, secret)
+	client, err := NewAuthClient(AuthModeHMAC, secret)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify HMAC headers exist
@@ -111,7 +120,10 @@ func TestNewAuthClient_HMACMode(t *testing.T) {
 
 // TestAuthRoundTripper_NilBody tests handling of requests with no body
 func TestAuthRoundTripper_NilBody(t *testing.T) {
-	client := NewAuthClient(AuthModeHMAC, "secret")
+	client, err := NewAuthClient(AuthModeHMAC, "secret")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Signature should still be added even with nil body
@@ -164,7 +176,10 @@ func TestAuthRoundTripper_BodyPreservation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(AuthModeHMAC, testSharedSecret)
+	client, err := NewAuthClient(AuthModeHMAC, testSharedSecret)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 	// Use a path to ensure proper URL handling
 	req, _ := http.NewRequestWithContext(
 		context.Background(),
@@ -201,7 +216,10 @@ func TestNewAuthClient_WithTimeout(t *testing.T) {
 	defer server.Close()
 
 	// Client with 100ms timeout (should timeout)
-	client1 := NewAuthClient(AuthModeNone, "", WithTimeout(100*time.Millisecond))
+	client1, err := NewAuthClient(AuthModeNone, "", WithTimeout(100*time.Millisecond))
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 	req1, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
 	resp, err := client1.Do(req1)
 	if err == nil {
@@ -212,7 +230,10 @@ func TestNewAuthClient_WithTimeout(t *testing.T) {
 	}
 
 	// Client with 300ms timeout (should succeed)
-	client2 := NewAuthClient(AuthModeNone, "", WithTimeout(300*time.Millisecond))
+	client2, err := NewAuthClient(AuthModeNone, "", WithTimeout(300*time.Millisecond))
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 	req2, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
 	resp2, err2 := client2.Do(req2)
 	if err2 != nil {
@@ -231,7 +252,10 @@ func TestNewAuthClient_WithMaxBodySize(t *testing.T) {
 	defer server.Close()
 
 	// Client with 100-byte limit
-	client := NewAuthClient(AuthModeHMAC, "secret", WithMaxBodySize(100))
+	client, err := NewAuthClient(AuthModeHMAC, "secret", WithMaxBodySize(100))
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Small body (should succeed)
 	smallBody := bytes.Repeat([]byte("x"), 50)
@@ -285,7 +309,7 @@ func TestNewAuthClient_WithSkipAuthFunc(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(
+	client, err := NewAuthClient(
 		AuthModeHMAC,
 		"secret",
 		WithSkipAuthFunc(func(req *http.Request) bool {
@@ -293,6 +317,9 @@ func TestNewAuthClient_WithSkipAuthFunc(t *testing.T) {
 			return strings.HasPrefix(req.URL.Path, "/health")
 		}),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Health check request (should skip auth)
 	req1, _ := http.NewRequestWithContext(
@@ -356,11 +383,14 @@ func TestNewAuthClient_WithCustomHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(
+	client, err := NewAuthClient(
 		AuthModeHMAC,
 		"secret",
 		WithHMACHeaders("X-Sig", "X-Time", "X-ID"),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	req, _ := http.NewRequestWithContext(
 		context.Background(),
@@ -399,11 +429,14 @@ func TestNewAuthClient_WithHeaderName(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(
+	client, err := NewAuthClient(
 		AuthModeSimple,
 		secret,
 		WithHeaderName("Authorization"),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
 	resp, err := client.Do(req)
@@ -433,11 +466,14 @@ func TestNewAuthClient_WithCustomTransport(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(
+	client, err := NewAuthClient(
 		AuthModeNone,
 		"",
 		WithTransport(customTransport),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
 	resp, err := client.Do(req)
@@ -470,7 +506,7 @@ func TestNewAuthClient_MultipleOptions(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(
+	client, err := NewAuthClient(
 		AuthModeHMAC,
 		"secret",
 		WithTimeout(10*time.Second),
@@ -480,6 +516,9 @@ func TestNewAuthClient_MultipleOptions(t *testing.T) {
 			return strings.HasPrefix(req.URL.Path, "/health")
 		}),
 	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Test normal request
 	req1, _ := http.NewRequestWithContext(
@@ -542,7 +581,10 @@ func TestAuthRoundTripper_Integration_HMAC(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewAuthClient(AuthModeHMAC, testSharedSecret)
+	client, err := NewAuthClient(AuthModeHMAC, testSharedSecret)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Test with query parameters (should be included in signature)
 	reqBody := []byte(`{"test": "data"}`)
@@ -575,7 +617,10 @@ func TestAuthRoundTripper_Integration_HMAC(t *testing.T) {
 // TestAuthRoundTripper_ErrorHandling tests various error scenarios
 func TestAuthRoundTripper_ErrorHandling(t *testing.T) {
 	// Test with missing secret
-	client := NewAuthClient(AuthModeSimple, "")
+	client, err := NewAuthClient(AuthModeSimple, "")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -602,7 +647,10 @@ func TestNewAuthClient_WithContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAuthClient(AuthModeHMAC, "secret")
+	client, err := NewAuthClient(AuthModeHMAC, "secret")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Create request with context
 	ctx, cancel := context.WithCancel(context.Background())

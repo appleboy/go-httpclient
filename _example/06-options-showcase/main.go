@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -12,10 +13,13 @@ import (
 func main() {
 	// Example 1: Minimal setup (only required parameters)
 	fmt.Println("Example 1: Minimal setup")
-	client1 := httpclient.NewAuthClient(
+	client1, err := httpclient.NewAuthClient(
 		httpclient.AuthModeSimple,
 		"my-api-key",
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with default settings")
 	fmt.Println("  - Timeout: 30s (default)")
 	fmt.Println("  - Max Body Size: 10MB (default)")
@@ -24,32 +28,41 @@ func main() {
 
 	// Example 2: Custom timeout
 	fmt.Println("\nExample 2: Custom timeout")
-	client2 := httpclient.NewAuthClient(
+	client2, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithTimeout(5*time.Second),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with 5s timeout")
 	_ = client2
 
 	// Example 3: Body size limit
 	fmt.Println("\nExample 3: Body size limit")
-	client3 := httpclient.NewAuthClient(
+	client3, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithMaxBodySize(1024*1024), // 1MB
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with 1MB body limit")
 	fmt.Println("  (prevents memory exhaustion with large uploads)")
 	_ = client3
 
 	// Example 4: Custom HMAC headers
 	fmt.Println("\nExample 4: Custom HMAC headers")
-	client4 := httpclient.NewAuthClient(
+	client4, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithHMACHeaders("X-Sig", "X-Time", "X-ID"),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with custom header names:")
 	fmt.Println("  - Signature: X-Sig (instead of X-Signature)")
 	fmt.Println("  - Timestamp: X-Time (instead of X-Timestamp)")
@@ -58,18 +71,21 @@ func main() {
 
 	// Example 5: Custom simple mode header
 	fmt.Println("\nExample 5: Custom simple mode header")
-	client5 := httpclient.NewAuthClient(
+	client5, err := httpclient.NewAuthClient(
 		httpclient.AuthModeSimple,
 		"my-api-key",
 		httpclient.WithHeaderName("Authorization"),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with custom header name:")
 	fmt.Println("  - Header: Authorization (instead of X-API-Secret)")
 	_ = client5
 
 	// Example 6: Skip auth for certain endpoints
 	fmt.Println("\nExample 6: Skip auth for certain endpoints")
-	client6 := httpclient.NewAuthClient(
+	client6, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithSkipAuthFunc(func(req *http.Request) bool {
@@ -79,6 +95,9 @@ func main() {
 				strings.HasPrefix(path, "/metrics")
 		}),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with skip auth function")
 	fmt.Println("  - /health → No authentication")
 	fmt.Println("  - /metrics → No authentication")
@@ -92,11 +111,14 @@ func main() {
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
 	}
-	client7 := httpclient.NewAuthClient(
+	client7, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithTransport(customTransport),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with custom transport")
 	fmt.Println("  - MaxIdleConns: 100")
 	fmt.Println("  - MaxIdleConnsPerHost: 10")
@@ -105,7 +127,7 @@ func main() {
 
 	// Example 8: Combining all options
 	fmt.Println("\nExample 8: All options combined")
-	client8 := httpclient.NewAuthClient(
+	client8, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithTimeout(10*time.Second),
@@ -116,6 +138,9 @@ func main() {
 			return strings.HasPrefix(req.URL.Path, "/public")
 		}),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 	fmt.Println("✓ Client created with all options combined:")
 	fmt.Println("  - Timeout: 10s")
 	fmt.Println("  - Max Body Size: 5MB")

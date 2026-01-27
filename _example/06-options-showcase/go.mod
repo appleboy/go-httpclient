@@ -1,4 +1,4 @@
-module example01
+module example
 
 go 1.25
 

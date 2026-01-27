@@ -55,19 +55,22 @@ go tool cover -html=coverage.txt
   - `verifyHMACSignature()`: Validates HMAC mode authentication with options
 - HMAC signature calculation: `calculateHMACSignature()` computes signatures from timestamp + method + full path (including query) + body
 
-**client.go** (~290 lines): RoundTripper-based HTTP client with automatic authentication:
+**client.go** (~760 lines): RoundTripper-based HTTP client with automatic authentication:
 
-- `NewAuthClient(mode, secret, ...opts)`: Creates http.Client with automatic authentication using Option Pattern
+- `NewAuthClient(mode, secret, ...opts) (*http.Client, error)`: Creates http.Client with automatic authentication using Option Pattern. **Returns error** if any option fails (e.g., certificate file not found, invalid mTLS cert/key pair).
 - `authRoundTripper`: Implements http.RoundTripper interface for transparent request signing
 - Option Pattern functions: `WithTimeout()`, `WithMaxBodySize()`, `WithTransport()`, `WithSkipAuthFunc()`, `WithHMACHeaders()`, `WithHeaderName()`
+- TLS certificate options: `WithTLSCertFromFile()`, `WithTLSCertFromURL()`, `WithTLSCertFromBytes()` - Load custom CA certificates
+- TLS skip verification: `WithInsecureSkipVerify()` - Skip TLS certificate verification for testing/development
+- mTLS certificate options: `WithMTLSFromFile()`, `WithMTLSFromBytes()` - Load client certificates for mutual TLS authentication
 - Automatic body reading and restoration: Reads request body for signature calculation, then restores it for the underlying transport
-- Security features: Body size limits (default 10MB), conditional authentication skipping, configurable timeouts
+- Security features: Body size limits (default 10MB), conditional authentication skipping, configurable timeouts, mTLS support, insecure skip verify option
 
 ### Authentication Flow
 
 **Client-side signing (automatic):**
 
-1. Create authenticated client: `client := NewAuthClient(mode, secret, ...opts)`
+1. Create authenticated client: `client, err := NewAuthClient(mode, secret, ...opts)` (handle error if options fail)
 2. Make requests normally: `client.Get(url)` or `client.Post(url, contentType, body)`
 3. Authentication headers are automatically added by the RoundTripper
 4. Body is automatically read, signed, and restored
@@ -165,10 +168,11 @@ The library provides a unified `Verify()` method for server-side authentication 
 
 ## Testing Requirements
 
-- Comprehensive test coverage in `auth_test.go` (1400+ lines) and `client_test.go` (~660 lines)
+- Comprehensive test coverage in `auth_test.go` (1400+ lines), `client_test.go` (~660 lines), and `cert_test.go` (~570 lines)
 - `auth_test.go`: Tests all four modes, custom headers, unified Verify() method, mode-specific verification, timestamp expiration, query parameter security, body size limits, GitHub webhook compatibility
-- `client_test.go`: Tests RoundTripper implementation, Option Pattern, body preservation, transport chaining, error handling
-- Integration tests use `httptest.NewServer` for end-to-end validation
+- `client_test.go`: Tests RoundTripper implementation, Option Pattern, body preservation, transport chaining, error handling, mTLS support
+- `cert_test.go`: Tests custom TLS certificate loading from files/URLs/bytes, error handling for invalid certificates, insecure skip verify option, mTLS certificate loading and validation
+- Integration tests use `httptest.NewServer` and `httptest.NewUnstartedServer` with custom TLS configs for end-to-end validation
 - All tests must pass on both Ubuntu and macOS
 - Current coverage: ~90% (exceeds 80% minimum requirement)
 

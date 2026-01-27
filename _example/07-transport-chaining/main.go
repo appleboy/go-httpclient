@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -50,11 +51,14 @@ func main() {
 	}
 
 	// Create authenticated client with logging transport
-	client1 := httpclient.NewAuthClient(
+	client1, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithTransport(loggingT),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	fmt.Println("  ✓ Client created with auth + logging")
 	fmt.Println("    (requests will be logged before being sent)")
@@ -75,11 +79,14 @@ func main() {
 	}
 
 	// Create authenticated client
-	client2 := httpclient.NewAuthClient(
+	client2, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"secret",
 		httpclient.WithTransport(loggingT2),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	fmt.Println("  ✓ Client created with full chain")
 	fmt.Println("    1. Authentication headers added")
@@ -107,13 +114,16 @@ func main() {
 
 	prodLogging := &loggingTransport{base: prodTransport}
 
-	prodClient := httpclient.NewAuthClient(
+	prodClient, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"production-secret",
 		httpclient.WithTransport(prodLogging),
 		httpclient.WithTimeout(30*time.Second),
 		httpclient.WithMaxBodySize(10*1024*1024), // 10MB
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	fmt.Println("  ✓ Production client ready")
 	fmt.Println("    - High connection limits for performance")
