@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -170,9 +171,9 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 		opt(options)
 	}
 
-	// Check for errors from options
+	// Check for errors from options - return all accumulated errors
 	if len(options.errors) > 0 {
-		return nil, options.errors[0]
+		return nil, errors.Join(options.errors...)
 	}
 
 	// Configure TLS if custom certificates, mTLS, or insecureSkipVerify are provided
