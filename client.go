@@ -19,16 +19,30 @@ const (
 
 // authRoundTripper implements http.RoundTripper with automatic authentication.
 type authRoundTripper struct {
-	config       *AuthConfig
-	transport    http.RoundTripper
-	maxBodySize  int64
-	skipAuthFunc func(*http.Request) bool
+	config          *AuthConfig
+	transport       http.RoundTripper
+	maxBodySize     int64
+	skipAuthFunc    func(*http.Request) bool
+	requestIDFunc   func() string
+	requestIDHeader string
 }
 
 // RoundTrip executes a single HTTP transaction with automatic authentication.
 // It reads the request body, adds authentication headers, restores the body,
 // and forwards the request to the underlying transport.
 func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Add request ID header if configured (before skip check to track all requests)
+	if t.requestIDFunc != nil {
+		headerName := t.requestIDHeader
+		if headerName == "" {
+			headerName = DefaultRequestIDHeader
+		}
+		// Only add if not already present (preserve user-provided IDs)
+		if req.Header.Get(headerName) == "" {
+			req.Header.Set(headerName, t.requestIDFunc())
+		}
+	}
+
 	// Check if authentication should be skipped for this request
 	if t.skipAuthFunc != nil && t.skipAuthFunc(req) {
 		// Skip authentication, use underlying transport directly
@@ -208,10 +222,12 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 
 	// Create authRoundTripper
 	authTransport := &authRoundTripper{
-		config:       config,
-		transport:    transport,
-		maxBodySize:  options.maxBodySize,
-		skipAuthFunc: options.skipAuthFunc,
+		config:          config,
+		transport:       transport,
+		maxBodySize:     options.maxBodySize,
+		skipAuthFunc:    options.skipAuthFunc,
+		requestIDFunc:   options.requestIDFunc,
+		requestIDHeader: options.requestIDHeader,
 	}
 
 	// Create and return http.Client

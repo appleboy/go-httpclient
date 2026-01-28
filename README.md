@@ -29,7 +29,9 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [Custom Header Names](#custom-header-names)
       - [Server-Side Verification](#server-side-verification)
       - [Automatic Authentication with RoundTripper](#automatic-authentication-with-roundtripper)
+      - [Request ID Tracking](#request-id-tracking)
       - [Custom TLS Certificates](#custom-tls-certificates)
+      - [mTLS (Mutual TLS) Support](#mtls-mutual-tls-support)
   - [Features](#features)
   - [Security](#security)
     - [HMAC Signature Calculation](#hmac-signature-calculation)
@@ -431,6 +433,8 @@ if err != nil {
 - `WithSkipAuthFunc(func)` - Conditionally skip authentication
 - `WithHMACHeaders(sig, ts, nonce)` - Custom HMAC header names
 - `WithHeaderName(name)` - Custom header for simple mode
+- `WithRequestID(func)` - Generate unique request IDs for tracing
+- `WithRequestIDHeader(name)` - Custom header for request ID (default: "X-Request-ID")
 - `WithTLSCertFromFile(path)` - Load TLS certificate from file
 - `WithTLSCertFromURL(ctx, url)` - Download TLS certificate from URL (with context for timeout control)
 - `WithTLSCertFromBytes(pem)` - Load TLS certificate from bytes
@@ -443,6 +447,114 @@ if err != nil {
 - [`_example/05-roundtripper-client`](_example/05-roundtripper-client/) - Basic automatic authentication
 - [`_example/06-options-showcase`](_example/06-options-showcase/) - All configuration options
 - [`_example/07-transport-chaining`](_example/07-transport-chaining/) - Advanced transport composition
+
+#### Request ID Tracking
+
+Add unique request IDs to every request for distributed tracing, logging correlation, and debugging. Request IDs help you track requests across microservices and correlate client-side and server-side logs.
+
+**Basic Usage with UUID:**
+
+```go
+import "github.com/google/uuid"
+
+// Create client with automatic request ID generation
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithRequestID(func() string {
+        return uuid.New().String()
+    }),
+)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Every request automatically includes X-Request-ID header
+resp, err := client.Get("https://api.example.com/data")
+// Request includes: X-Request-ID: 550e8400-e29b-41d4-a716-446655440000
+```
+
+**Custom Request ID Format:**
+
+```go
+var requestCounter int
+
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithRequestID(func() string {
+        requestCounter++
+        return fmt.Sprintf("req-%d-%d", time.Now().Unix(), requestCounter)
+    }),
+)
+// Request includes: X-Request-ID: req-1704067200-1
+```
+
+**Custom Header Name:**
+
+```go
+// Use X-Correlation-ID instead of X-Request-ID
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithRequestID(uuid.New().String),
+    httpclient.WithRequestIDHeader("X-Correlation-ID"),
+)
+// Request includes: X-Correlation-ID: 550e8400-e29b-41d4-a716-446655440000
+```
+
+**Preserving User-Provided IDs:**
+
+If a request already has a request ID header, it will be preserved:
+
+```go
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithRequestID(uuid.New().String),
+)
+
+// User-provided ID takes precedence
+req, _ := http.NewRequest(http.MethodGet, "https://api.example.com/data", nil)
+req.Header.Set("X-Request-ID", "user-custom-id-123")
+resp, err := client.Do(req)
+// Request includes: X-Request-ID: user-custom-id-123 (preserved)
+```
+
+**Works with All Features:**
+
+Request ID tracking integrates seamlessly with all authentication modes and features:
+
+```go
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithRequestID(uuid.New().String),
+    httpclient.WithTimeout(10*time.Second),
+    httpclient.WithSkipAuthFunc(func(req *http.Request) bool {
+        return strings.HasPrefix(req.URL.Path, "/health")
+    }),
+)
+// Request ID is added to ALL requests (even when auth is skipped)
+```
+
+**Key Features:**
+
+- **Automatic Generation**: Unique ID for every request
+- **Preserves User IDs**: User-provided IDs are never overwritten
+- **Customizable**: Custom generator functions and header names
+- **Always Applied**: Added before authentication headers (tracks all requests)
+- **Zero Overhead**: No performance impact when not configured
+
+**Use Cases:**
+
+- **Distributed Tracing**: Track requests across microservices
+- **Log Correlation**: Match client and server logs
+- **Debugging**: Identify specific request flows
+- **Monitoring**: Track request latency and errors
+- **Support**: Customers can provide request ID for troubleshooting
+
+**See full example:** [`_example/10-request-id-tracking`](_example/10-request-id-tracking/)
 
 #### Custom TLS Certificates
 
@@ -573,9 +685,14 @@ if err != nil {
 
 - **Automatic Authentication**: RoundTripper-based client signs requests automatically
 - **Flexible Configuration**: Option Pattern for easy customization (timeout, body limits, etc.)
-  - **Client Options**: `WithTimeout`, `WithMaxBodySize`, `WithTransport`, `WithSkipAuthFunc`, etc.
+  - **Client Options**: `WithTimeout`, `WithMaxBodySize`, `WithTransport`, `WithSkipAuthFunc`, `WithRequestID`, etc.
   - **Verification Options**: `WithVerifyMaxAge`, `WithVerifyMaxBodySize` for per-endpoint control
 - **Multiple Authentication Strategies**: Choose between none, simple, or HMAC modes
+- **Request ID Tracking**: Generate unique IDs for distributed tracing and log correlation
+  - Automatic generation with custom functions (UUID, timestamp, etc.)
+  - Preserves user-provided request IDs
+  - Customizable header names (default: X-Request-ID)
+  - Works with all authentication modes
 - **Custom TLS Certificates**: Load certificates from files, URLs, or embedded content
 - **mTLS Support**: Client certificate authentication for mutual TLS
 - **Enterprise PKI Support**: Trust custom Certificate Authorities and self-signed certificates
@@ -685,11 +802,27 @@ type AuthConfig struct {
 
 ### Constants
 
+**Authentication Modes:**
+
 ```go
 const (
     AuthModeNone   = "none"   // No authentication
     AuthModeSimple = "simple" // Simple API secret in header
     AuthModeHMAC   = "hmac"   // HMAC-SHA256 signature
+    AuthModeGitHub = "github" // GitHub webhook-style HMAC-SHA256
+)
+```
+
+**Default Header Names:**
+
+```go
+const (
+    DefaultAPISecretHeader       = "X-API-Secret"        // Simple mode
+    DefaultSignatureHeader       = "X-Signature"         // HMAC mode
+    DefaultTimestampHeader       = "X-Timestamp"         // HMAC mode
+    DefaultNonceHeader           = "X-Nonce"             // HMAC mode
+    DefaultGitHubSignatureHeader = "X-Hub-Signature-256" // GitHub mode
+    DefaultRequestIDHeader       = "X-Request-ID"        // Request tracking
 )
 ```
 
@@ -737,6 +870,11 @@ Configure `NewAuthClient` behavior:
 
 - `WithHMACHeaders(sig, ts, nonce string)` - Custom HMAC header names
 - `WithHeaderName(name string)` - Custom header for simple mode
+
+**Request Tracking Options:**
+
+- `WithRequestID(func() string)` - Generate unique request IDs for tracing
+- `WithRequestIDHeader(name string)` - Custom header name for request ID (default: "X-Request-ID")
 
 **TLS Certificate Options:**
 
@@ -927,7 +1065,9 @@ go tool cover -html=coverage.txt
 │   ├── 05-roundtripper-client/   # Automatic authentication
 │   ├── 06-options-showcase/      # Configuration options
 │   ├── 07-transport-chaining/    # Transport composition
-│   └── 08-custom-cert/           # Custom TLS certificates
+│   ├── 08-custom-cert/           # Custom TLS certificates
+│   ├── 09-mtls/                  # Mutual TLS authentication
+│   └── 10-request-id-tracking/   # Request ID tracking and tracing
 └── .github/workflows/  # CI/CD pipelines
     ├── testing.yml     # Multi-platform testing
     ├── security.yml    # Trivy security scanning

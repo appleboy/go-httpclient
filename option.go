@@ -34,6 +34,10 @@ type clientOptions struct {
 	maxBodySize  int64
 	skipAuthFunc func(*http.Request) bool
 
+	// Request tracking options
+	requestIDFunc   func() string // Function to generate request IDs
+	requestIDHeader string        // Header name for request ID
+
 	// TLS certificate options
 	tlsCerts           [][]byte // Custom TLS certificates in PEM format
 	insecureSkipVerify bool     // Skip TLS certificate verification
@@ -152,6 +156,53 @@ func WithMaxBodySize(maxBytes int64) ClientOption {
 func WithSkipAuthFunc(fn func(*http.Request) bool) ClientOption {
 	return func(opts *clientOptions) {
 		opts.skipAuthFunc = fn
+	}
+}
+
+// WithRequestID sets a function that generates unique request IDs for request tracing.
+// The generated ID will be automatically added to each request in the X-Request-ID header
+// (or custom header name set via WithRequestIDHeader).
+//
+// This is useful for:
+// - Correlating client-side and server-side logs
+// - Distributed tracing across microservices
+// - Debugging and troubleshooting request flows
+//
+// Default: No request ID is added
+//
+// Example with UUID:
+//
+//	import "github.com/google/uuid"
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithRequestID(func() string {
+//	        return uuid.New().String()
+//	    }))
+//
+// Example with custom format:
+//
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithRequestID(func() string {
+//	        return fmt.Sprintf("req-%d-%s", time.Now().Unix(), randomString(8))
+//	    }))
+func WithRequestID(fn func() string) ClientOption {
+	return func(opts *clientOptions) {
+		opts.requestIDFunc = fn
+	}
+}
+
+// WithRequestIDHeader sets a custom header name for the request ID.
+// This is only used when WithRequestID is also configured.
+//
+// Default: "X-Request-ID"
+//
+// Example:
+//
+//	client := NewAuthClient(AuthModeHMAC, "secret",
+//	    WithRequestID(uuid.New().String),
+//	    WithRequestIDHeader("X-Correlation-ID"))
+func WithRequestIDHeader(name string) ClientOption {
+	return func(opts *clientOptions) {
+		opts.requestIDHeader = name
 	}
 }
 
