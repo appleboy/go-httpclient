@@ -293,7 +293,8 @@ func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 		return fmt.Errorf("missing authentication header: %s", headerName)
 	}
 
-	if secret != c.Secret {
+	// Use constant-time comparison to prevent timing attacks
+	if !hmac.Equal([]byte(secret), []byte(c.Secret)) {
 		return fmt.Errorf("authentication failed: invalid secret")
 	}
 
