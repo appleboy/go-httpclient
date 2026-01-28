@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+// Default client option constants
+const (
+	DefaultClientTimeout    = 30 * time.Second // Default HTTP client timeout
+	DefaultCertFetchTimeout = 30 * time.Second // Default timeout for fetching certificates from URLs
+)
+
 // ClientOption is a function type for configuring the HTTP client.
 type ClientOption func(*clientOptions)
 
@@ -51,8 +57,8 @@ func defaultClientOptions() *clientOptions {
 
 		// Client behavior defaults
 		transport:    nil, // Will use http.DefaultTransport if not specified
-		timeout:      30 * time.Second,
-		maxBodySize:  10 * 1024 * 1024, // 10MB
+		timeout:      DefaultClientTimeout,
+		maxBodySize:  DefaultVerifyMaxBodySize,
 		skipAuthFunc: nil,
 	}
 }
@@ -200,7 +206,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 			Transport: &http.Transport{
 				TLSClientConfig: tlsConfig,
 			},
-			Timeout: 30 * time.Second,
+			Timeout: DefaultCertFetchTimeout,
 		}
 
 		// Create request with provided context

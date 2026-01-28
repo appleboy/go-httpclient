@@ -33,6 +33,12 @@ const (
 	DefaultGitHubSignatureHeader = "X-Hub-Signature-256" // Default signature header for GitHub mode
 )
 
+// Default verification option constants
+const (
+	DefaultVerifyMaxAge      = 5 * time.Minute  // Default maximum age for request timestamps
+	DefaultVerifyMaxBodySize = 10 * 1024 * 1024 // Default maximum request body size (10MB)
+)
+
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
 	Mode            string // "none", "simple", or "hmac"
@@ -55,8 +61,8 @@ type VerifyOption func(*VerifyOptions)
 // defaultVerifyOptions returns default verification options
 func defaultVerifyOptions() *VerifyOptions {
 	return &VerifyOptions{
-		MaxAge:      5 * time.Minute,
-		MaxBodySize: 10 * 1024 * 1024, // 10MB
+		MaxAge:      DefaultVerifyMaxAge,
+		MaxBodySize: DefaultVerifyMaxBodySize,
 	}
 }
 
