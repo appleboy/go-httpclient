@@ -18,6 +18,31 @@ const (
 )
 
 // authRoundTripper implements http.RoundTripper with automatic authentication.
+// tlsRoundTripperWrapper wraps a non-*http.Transport RoundTripper with TLS configuration.
+// This wrapper ensures TLS settings (custom CA certs, mTLS, InsecureSkipVerify) take effect
+// even when users provide custom RoundTrippers that aren't *http.Transport.
+//
+// Behavior:
+//   - HTTPS requests: Uses TLS-configured transport to ensure TLS settings apply
+//   - HTTP/other requests: Delegates to the user's custom RoundTripper
+//
+// This allows combining custom middleware (logging, monitoring, etc.) with TLS configuration.
+type tlsRoundTripperWrapper struct {
+	userRoundTripper http.RoundTripper // User's custom RoundTripper
+	tlsTransport     *http.Transport   // TLS-configured transport for HTTPS requests
+}
+
+// RoundTrip implements the http.RoundTripper interface.
+// Routes HTTPS requests through TLS-configured transport, delegates others to user's RoundTripper.
+func (w *tlsRoundTripperWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// For HTTPS requests, use TLS-configured transport to ensure TLS settings apply
+	if req.URL.Scheme == "https" {
+		return w.tlsTransport.RoundTrip(req)
+	}
+	// For non-HTTPS requests, delegate to user's RoundTripper
+	return w.userRoundTripper.RoundTrip(req)
+}
+
 type authRoundTripper struct {
 	config          *AuthConfig
 	transport       http.RoundTripper
@@ -288,9 +313,15 @@ func buildTLSTransport(
 			transport.TLSClientConfig = tlsConfig
 			return transport
 		}
-		// If it's not an *http.Transport, we can't modify it safely
-		// Return the base transport as-is (user's responsibility)
-		return baseTransport
+		// If it's not an *http.Transport, wrap it with TLS-configured transport
+		// This allows custom RoundTrippers to work with TLS configuration
+		defaultTransport := http.DefaultTransport.(*http.Transport)
+		tlsTransport := defaultTransport.Clone()
+		tlsTransport.TLSClientConfig = tlsConfig
+		return &tlsRoundTripperWrapper{
+			userRoundTripper: baseTransport,
+			tlsTransport:     tlsTransport,
+		}
 	}
 
 	// No base transport provided, create a new one based on http.DefaultTransport
