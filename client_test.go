@@ -680,3 +680,246 @@ func (t *customRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	}
 	return t.base.RoundTrip(req)
 }
+
+// TestWithRequestID tests request ID generation and injection
+func TestWithRequestID(t *testing.T) {
+	requestIDCounter := 0
+	requestIDFunc := func() string {
+		requestIDCounter++
+		return "test-request-" + string(rune('0'+requestIDCounter))
+	}
+
+	// Create test server that verifies request ID header
+	var receivedRequestID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedRequestID = r.Header.Get(DefaultRequestIDHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client with request ID function
+	client, err := NewAuthClient(
+		AuthModeNone,
+		"",
+		WithRequestID(requestIDFunc),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Make request
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Verify request ID was added
+	if receivedRequestID != "test-request-1" {
+		t.Errorf("Expected request ID 'test-request-1', got '%s'", receivedRequestID)
+	}
+}
+
+// TestWithRequestID_CustomHeader tests custom request ID header name
+func TestWithRequestID_CustomHeader(t *testing.T) {
+	customHeader := "X-Correlation-ID"
+	testRequestID := "custom-correlation-123"
+
+	// Create test server
+	var receivedRequestID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedRequestID = r.Header.Get(customHeader)
+		// Verify default header is not present
+		if r.Header.Get(DefaultRequestIDHeader) != "" {
+			t.Error("Default request ID header should not be present")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client with custom request ID header
+	client, err := NewAuthClient(
+		AuthModeNone,
+		"",
+		WithRequestID(func() string { return testRequestID }),
+		WithRequestIDHeader(customHeader),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Make request
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Verify custom request ID header was used
+	if receivedRequestID != testRequestID {
+		t.Errorf("Expected request ID '%s', got '%s'", testRequestID, receivedRequestID)
+	}
+}
+
+// TestWithRequestID_PreservesUserProvidedID tests that user-provided request IDs are preserved
+func TestWithRequestID_PreservesUserProvidedID(t *testing.T) {
+	userProvidedID := "user-provided-id-999"
+
+	// Create test server
+	var receivedRequestID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedRequestID = r.Header.Get(DefaultRequestIDHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client with request ID function
+	client, err := NewAuthClient(
+		AuthModeNone,
+		"",
+		WithRequestID(func() string { return "auto-generated-id" }),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Make request with user-provided request ID
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	req.Header.Set(DefaultRequestIDHeader, userProvidedID)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Verify user-provided ID was preserved
+	if receivedRequestID != userProvidedID {
+		t.Errorf(
+			"Expected user-provided request ID '%s', got '%s'",
+			userProvidedID,
+			receivedRequestID,
+		)
+	}
+}
+
+// TestWithRequestID_WithAuthentication tests request ID with HMAC authentication
+func TestWithRequestID_WithAuthentication(t *testing.T) {
+	testRequestID := "auth-request-123"
+	secret := "test-secret"
+
+	// Create test server that verifies both request ID and authentication
+	var receivedRequestID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedRequestID = r.Header.Get(DefaultRequestIDHeader)
+
+		// Verify authentication headers are present
+		if r.Header.Get(DefaultSignatureHeader) == "" {
+			t.Error("Signature header missing")
+		}
+		if r.Header.Get(DefaultTimestampHeader) == "" {
+			t.Error("Timestamp header missing")
+		}
+		if r.Header.Get(DefaultNonceHeader) == "" {
+			t.Error("Nonce header missing")
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client with HMAC authentication and request ID
+	client, err := NewAuthClient(
+		AuthModeHMAC,
+		secret,
+		WithRequestID(func() string { return testRequestID }),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Make request
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Verify request ID was added
+	if receivedRequestID != testRequestID {
+		t.Errorf("Expected request ID '%s', got '%s'", testRequestID, receivedRequestID)
+	}
+}
+
+// TestWithRequestID_WithSkipAuth tests request ID is added even when auth is skipped
+func TestWithRequestID_WithSkipAuth(t *testing.T) {
+	testRequestID := "skip-auth-request-456"
+
+	// Create test server
+	var receivedRequestID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedRequestID = r.Header.Get(DefaultRequestIDHeader)
+
+		// Verify auth headers are not present
+		if r.Header.Get(DefaultSignatureHeader) != "" {
+			t.Error("Signature header should not be present when auth is skipped")
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client with skip auth function and request ID
+	client, err := NewAuthClient(
+		AuthModeHMAC,
+		"secret",
+		WithRequestID(func() string { return testRequestID }),
+		WithSkipAuthFunc(func(req *http.Request) bool {
+			return true // Skip all requests
+		}),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Make request
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Verify request ID was added even when auth was skipped
+	if receivedRequestID != testRequestID {
+		t.Errorf("Expected request ID '%s', got '%s'", testRequestID, receivedRequestID)
+	}
+}
+
+// TestWithRequestID_NoFunction tests that no request ID header is added when function is not configured
+func TestWithRequestID_NoFunction(t *testing.T) {
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(DefaultRequestIDHeader) != "" {
+			t.Error("Request ID header should not be present when function is not configured")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client without request ID function
+	client, err := NewAuthClient(AuthModeNone, "")
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Make request
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+}

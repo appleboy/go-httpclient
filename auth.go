@@ -31,6 +31,7 @@ const (
 	DefaultTimestampHeader       = "X-Timestamp"         // Default timestamp header for HMAC mode
 	DefaultNonceHeader           = "X-Nonce"             // Default nonce header for HMAC mode
 	DefaultGitHubSignatureHeader = "X-Hub-Signature-256" // Default signature header for GitHub mode
+	DefaultRequestIDHeader       = "X-Request-ID"        // Default request ID header for tracing
 )
 
 // Default verification option constants
