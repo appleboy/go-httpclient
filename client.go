@@ -18,25 +18,28 @@ const (
 )
 
 // authRoundTripper implements http.RoundTripper with automatic authentication.
-// tlsRoundTripperWrapper wraps a non-*http.Transport RoundTripper with TLS configuration.
-// This wrapper ensures TLS settings (custom CA certs, mTLS, InsecureSkipVerify) take effect
+// tlsRoundTripperWrapper routes HTTPS requests through a TLS-configured *http.Transport.
+// This ensures TLS settings (custom CA certs, mTLS, InsecureSkipVerify) take effect
 // even when users provide custom RoundTrippers that aren't *http.Transport.
 //
 // Behavior:
-//   - HTTPS requests: Uses TLS-configured transport to ensure TLS settings apply
-//   - HTTP/other requests: Delegates to the user's custom RoundTripper
+//   - HTTPS requests: Sent via tlsTransport; userRoundTripper is NOT invoked.
+//   - HTTP/other requests: Delegated to the user's custom RoundTripper (userRoundTripper).
 //
-// This allows combining custom middleware (logging, monitoring, etc.) with TLS configuration.
+// Note: Because HTTPS traffic bypasses userRoundTripper, any middleware implemented in
+// userRoundTripper (logging, monitoring, metrics, etc.) will only apply to non-HTTPS requests.
 type tlsRoundTripperWrapper struct {
 	userRoundTripper http.RoundTripper // User's custom RoundTripper
 	tlsTransport     *http.Transport   // TLS-configured transport for HTTPS requests
 }
 
 // RoundTrip implements the http.RoundTripper interface.
-// Routes HTTPS requests through TLS-configured transport, delegates others to user's RoundTripper.
+// HTTPS requests are sent via the TLS-configured transport; non-HTTPS requests are
+// delegated to the user's RoundTripper. Middleware in userRoundTripper therefore only
+// applies to non-HTTPS traffic.
 func (w *tlsRoundTripperWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// For HTTPS requests, use TLS-configured transport to ensure TLS settings apply
-	if req.URL.Scheme == "https" {
+	if req != nil && req.URL != nil && req.URL.Scheme == "https" {
 		return w.tlsTransport.RoundTrip(req)
 	}
 	// For non-HTTPS requests, delegate to user's RoundTripper
