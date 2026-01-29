@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -384,126 +383,105 @@ func TestTLSCertWithCustomTransport(t *testing.T) {
 	}
 }
 
-// TestTLSCertWithNonTransportRoundTripper tests that TLS configuration works
-// with custom RoundTrippers that are not *http.Transport, using the wrapper pattern.
+// TestTLSCertWithNonTransportRoundTripper tests that TLS options cannot be combined
+// with non-Transport RoundTrippers and returns a clear error message.
 func TestTLSCertWithNonTransportRoundTripper(t *testing.T) {
 	// Generate test certificate
-	certPEM, keyPEM, err := generateTestCertificate()
+	certPEM, _, err := generateTestCertificate()
 	if err != nil {
 		t.Fatalf("Failed to generate test certificate: %v", err)
 	}
 
-	// Create TLS certificate
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		t.Fatalf("Failed to create X509 key pair: %v", err)
-	}
-
-	// Create HTTPS test server
-	httpsServer := httptest.NewUnstartedServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("HTTPS"))
-		}),
-	)
-	httpsServer.TLS = &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
-	httpsServer.StartTLS()
-	defer httpsServer.Close()
-
-	// Create HTTP test server for testing delegation
-	httpServer := httptest.NewServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("HTTP"))
-		}),
-	)
-	defer httpServer.Close()
-
-	// Track if custom RoundTripper was used for HTTP requests
-	httpRequestUsedCustom := false
-
 	// Create custom non-*http.Transport RoundTripper
 	customRoundTripper := &testNonTransportRoundTripper{
 		base: http.DefaultTransport,
-		onHTTPRequest: func(req *http.Request) {
-			if req.URL.Scheme == "http" {
-				httpRequestUsedCustom = true
-			}
+	}
+
+	testCases := []struct {
+		name        string
+		options     []ClientOption
+		shouldError bool
+	}{
+		{
+			name: "TLS cert with non-Transport RoundTripper",
+			options: []ClientOption{
+				WithTransport(customRoundTripper),
+				WithTLSCertFromBytes(certPEM),
+			},
+			shouldError: true,
+		},
+		{
+			name: "InsecureSkipVerify with non-Transport RoundTripper",
+			options: []ClientOption{
+				WithTransport(customRoundTripper),
+				WithInsecureSkipVerify(true),
+			},
+			shouldError: true,
+		},
+		{
+			name: "mTLS with non-Transport RoundTripper",
+			options: []ClientOption{
+				WithTransport(customRoundTripper),
+				WithMTLSFromBytes(certPEM, certPEM),
+			},
+			// Should error because WithMTLSFromBytes will fail validation
+			// (same PEM for cert and key is invalid), or if fixed,
+			// should error due to non-Transport conflict
+			shouldError: true,
+		},
+		{
+			name: "Non-Transport RoundTripper without TLS options",
+			options: []ClientOption{
+				WithTransport(customRoundTripper),
+			},
+			shouldError: false, // This should work
+		},
+		{
+			name: "TLS cert with *http.Transport",
+			options: []ClientOption{
+				WithTransport(&http.Transport{}),
+				WithTLSCertFromBytes(certPEM),
+			},
+			shouldError: false, // This should work
 		},
 	}
 
-	// Create client with custom RoundTripper and TLS certificate
-	client, err := NewAuthClient(
-		AuthModeSimple,
-		"secret",
-		WithTransport(customRoundTripper),
-		WithTLSCertFromBytes(certPEM),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := NewAuthClient(
+				AuthModeSimple,
+				"secret",
+				tc.options...,
+			)
+
+			if tc.shouldError {
+				if err == nil {
+					t.Errorf("Expected error, got nil")
+				} else {
+					// Verify error message contains helpful information
+					errMsg := err.Error()
+					if !strings.Contains(errMsg, "TLS options") &&
+						!strings.Contains(errMsg, "invalid mTLS") {
+						t.Errorf("Error message should mention TLS options or validation, got: %s", errMsg)
+					}
+				}
+				if client != nil {
+					t.Errorf("Expected nil client, got non-nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got: %v", err)
+				}
+				if client == nil {
+					t.Errorf("Expected non-nil client, got nil")
+				}
+			}
+		})
 	}
-
-	// Test 1: HTTPS request should work with TLS wrapper (using TLS transport)
-	t.Run("HTTPS with TLS wrapper", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(
-			context.Background(),
-			http.MethodGet,
-			httpsServer.URL,
-			nil,
-		)
-		if err != nil {
-			t.Fatalf("Failed to create request: %v", err)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("HTTPS request failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-
-		body, _ := io.ReadAll(resp.Body)
-		if string(body) != "HTTPS" {
-			t.Errorf("Expected 'HTTPS', got %q", string(body))
-		}
-	})
-
-	// Test 2: HTTP request should delegate to custom RoundTripper
-	t.Run("HTTP delegates to custom RoundTripper", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(
-			context.Background(),
-			http.MethodGet,
-			httpServer.URL,
-			nil,
-		)
-		if err != nil {
-			t.Fatalf("Failed to create request: %v", err)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("HTTP request failed: %v", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", resp.StatusCode)
-		}
-
-		if !httpRequestUsedCustom {
-			t.Error("HTTP request should have used custom RoundTripper")
-		}
-	})
 }
 
 // testNonTransportRoundTripper is a custom RoundTripper that is NOT *http.Transport.
-// Used to test the tlsRoundTripperWrapper pattern.
+// Used to test conflict detection between TLS options and non-Transport RoundTrippers.
 type testNonTransportRoundTripper struct {
 	base          http.RoundTripper
 	onHTTPRequest func(*http.Request)

@@ -18,34 +18,6 @@ const (
 )
 
 // authRoundTripper implements http.RoundTripper with automatic authentication.
-// tlsRoundTripperWrapper routes HTTPS requests through a TLS-configured *http.Transport.
-// This ensures TLS settings (custom CA certs, mTLS, InsecureSkipVerify) take effect
-// even when users provide custom RoundTrippers that aren't *http.Transport.
-//
-// Behavior:
-//   - HTTPS requests: Sent via tlsTransport; userRoundTripper is NOT invoked.
-//   - HTTP/other requests: Delegated to the user's custom RoundTripper (userRoundTripper).
-//
-// Note: Because HTTPS traffic bypasses userRoundTripper, any middleware implemented in
-// userRoundTripper (logging, monitoring, metrics, etc.) will only apply to non-HTTPS requests.
-type tlsRoundTripperWrapper struct {
-	userRoundTripper http.RoundTripper // User's custom RoundTripper
-	tlsTransport     *http.Transport   // TLS-configured transport for HTTPS requests
-}
-
-// RoundTrip implements the http.RoundTripper interface.
-// HTTPS requests are sent via the TLS-configured transport; non-HTTPS requests are
-// delegated to the user's RoundTripper. Middleware in userRoundTripper therefore only
-// applies to non-HTTPS traffic.
-func (w *tlsRoundTripperWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// For HTTPS requests, use TLS-configured transport to ensure TLS settings apply
-	if req != nil && req.URL != nil && req.URL.Scheme == "https" {
-		return w.tlsTransport.RoundTrip(req)
-	}
-	// For non-HTTPS requests, delegate to user's RoundTripper
-	return w.userRoundTripper.RoundTrip(req)
-}
-
 type authRoundTripper struct {
 	config          *AuthConfig
 	transport       http.RoundTripper
@@ -218,6 +190,22 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 		return nil, errors.Join(options.errors...)
 	}
 
+	// Detect conflicts between TLS options and non-Transport RoundTrippers
+	if options.hasTLSOptions() && options.isNonTransportRoundTripper() {
+		return nil, fmt.Errorf(
+			"TLS options (WithTLSCert*, WithMTLS*, WithInsecureSkipVerify) cannot be combined " +
+				"with non-Transport RoundTrippers provided via WithTransport(). " +
+				"Please configure TLS settings in your custom *http.Transport instead. " +
+				"Example:\n" +
+				"    transport := &http.Transport{\n" +
+				"        TLSClientConfig: &tls.Config{\n" +
+				"            RootCAs: yourCertPool,\n" +
+				"        },\n" +
+				"    }\n" +
+				"    client := NewAuthClient(mode, secret, WithTransport(transport))",
+		)
+	}
+
 	// Configure TLS if custom certificates, mTLS, or insecureSkipVerify are provided
 	transport := options.transport
 	if len(options.tlsCerts) > 0 ||
@@ -267,6 +255,9 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 
 // buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates,
 // optional mTLS client certificates, and/or insecure skip verify.
+//
+// This function expects baseTransport to be either nil or an *http.Transport.
+// Non-Transport RoundTrippers should be rejected earlier via conflict detection.
 func buildTLSTransport(
 	baseTransport http.RoundTripper,
 	certs [][]byte,
@@ -308,7 +299,7 @@ func buildTLSTransport(
 		InsecureSkipVerify: insecureSkipVerify,
 	}
 
-	// If a base transport is provided, try to clone and modify it
+	// If a base transport is provided, clone and modify it
 	if baseTransport != nil {
 		if httpTransport, ok := baseTransport.(*http.Transport); ok {
 			// Clone the transport to avoid modifying the original
@@ -316,18 +307,12 @@ func buildTLSTransport(
 			transport.TLSClientConfig = tlsConfig
 			return transport
 		}
-		// If it's not an *http.Transport, wrap it with TLS-configured transport
-		// This allows custom RoundTrippers to work with TLS configuration
-		defaultTransport := http.DefaultTransport.(*http.Transport)
-		tlsTransport := defaultTransport.Clone()
-		tlsTransport.TLSClientConfig = tlsConfig
-		return &tlsRoundTripperWrapper{
-			userRoundTripper: baseTransport,
-			tlsTransport:     tlsTransport,
-		}
+		// This should never happen due to conflict detection in NewAuthClient,
+		// but handle it defensively by creating a new transport
 	}
 
-	// No base transport provided, create a new one based on http.DefaultTransport
+	// No base transport provided (or non-Transport which shouldn't happen),
+	// create a new one based on http.DefaultTransport
 	defaultTransport := http.DefaultTransport.(*http.Transport)
 	transport := defaultTransport.Clone()
 	transport.TLSClientConfig = tlsConfig

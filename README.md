@@ -32,6 +32,7 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [Request ID Tracking](#request-id-tracking)
       - [Custom TLS Certificates](#custom-tls-certificates)
       - [mTLS (Mutual TLS) Support](#mtls-mutual-tls-support)
+      - [Transport Chaining with TLS](#transport-chaining-with-tls)
   - [Features](#features)
   - [Security](#security)
     - [HMAC Signature Calculation](#hmac-signature-calculation)
@@ -429,7 +430,7 @@ if err != nil {
 
 - `WithTimeout(duration)` - Set request timeout (default: 30s)
 - `WithMaxBodySize(bytes)` - Limit request body size (default: 10MB)
-- `WithTransport(transport)` - Use custom HTTP transport
+- `WithTransport(transport)` - Use custom HTTP transport (must be `*http.Transport` if using TLS options)
 - `WithSkipAuthFunc(func)` - Conditionally skip authentication
 - `WithHMACHeaders(sig, ts, nonce)` - Custom HMAC header names
 - `WithHeaderName(name)` - Custom header for simple mode
@@ -441,6 +442,8 @@ if err != nil {
 - `WithInsecureSkipVerify(bool)` - Skip TLS certificate verification (testing only)
 - `WithMTLSFromFile(certPath, keyPath)` - Load mTLS client certificate from files
 - `WithMTLSFromBytes(certPEM, keyPEM)` - Load mTLS client certificate from bytes
+
+**Important:** TLS options (`WithTLSCert*`, `WithMTLS*`, `WithInsecureSkipVerify`) cannot be combined with non-`*http.Transport` RoundTrippers. See [Transport Chaining with TLS](#transport-chaining-with-tls) for details.
 
 **See full examples:**
 
@@ -681,6 +684,85 @@ if err != nil {
 
 **See full example:** [`_example/09-mtls`](_example/09-mtls/)
 
+#### Transport Chaining with TLS
+
+When using custom middleware (logging, metrics, tracing, etc.) with TLS options, you must provide an `*http.Transport`, not any other `RoundTripper` implementation.
+
+**Why this limitation exists:**
+
+TLS configuration (custom CA certificates, mTLS, InsecureSkipVerify) can only be applied to `*http.Transport`. Non-Transport RoundTrippers (like logging or metrics middleware) cannot have TLS settings directly applied to them.
+
+**What happens if you violate this:**
+
+```go
+// ❌ This will return an error
+loggingMiddleware := &MyLoggingRoundTripper{
+    Next: http.DefaultTransport,
+}
+
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTransport(loggingMiddleware),  // Non-Transport RoundTripper
+    httpclient.WithTLSCertFromFile("/path/to/ca.crt"), // TLS option
+)
+// Error: "TLS options (WithTLSCert*, WithMTLS*, WithInsecureSkipVerify) cannot be combined
+//         with non-Transport RoundTrippers provided via WithTransport()..."
+```
+
+**Solution 1: Configure TLS in your Transport (Recommended)**
+
+```go
+// ✅ Configure TLS in *http.Transport, then wrap with middleware
+certPool := x509.NewCertPool()
+certPEM, _ := os.ReadFile("/path/to/ca.crt")
+certPool.AppendCertsFromPEM(certPEM)
+
+tlsTransport := &http.Transport{
+    TLSClientConfig: &tls.Config{
+        RootCAs: certPool,
+    },
+}
+
+// Pass the Transport with TLS configured
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTransport(tlsTransport),
+)
+
+// Then wrap the client's Transport with your middleware
+client.Transport = &LoggingRoundTripper{
+    Next: client.Transport, // Wraps authRoundTripper -> tlsTransport
+}
+```
+
+**Solution 2: Use \*http.Transport only**
+
+```go
+// ✅ Use *http.Transport with TLS options
+customTransport := &http.Transport{
+    MaxIdleConns: 100,
+    IdleConnTimeout: 90 * time.Second,
+}
+
+client, err := httpclient.NewAuthClient(
+    httpclient.AuthModeHMAC,
+    "secret",
+    httpclient.WithTransport(customTransport),        // *http.Transport is OK
+    httpclient.WithTLSCertFromFile("/path/to/ca.crt"), // TLS options work
+)
+```
+
+**Key Points:**
+
+- TLS options work with `*http.Transport` or no custom transport
+- TLS options cannot be combined with non-Transport RoundTrippers
+- You can wrap the client's Transport with middleware after creation
+- The library provides clear error messages to guide you
+
+**See full example:** [`_example/07-transport-chaining`](_example/07-transport-chaining/)
+
 ## Features
 
 - **Automatic Authentication**: RoundTripper-based client signs requests automatically
@@ -863,7 +945,7 @@ Configure `NewAuthClient` behavior:
 
 - `WithTimeout(duration)` - Request timeout (default: 30s)
 - `WithMaxBodySize(bytes)` - Max body size (default: 10MB, set 0 for unlimited)
-- `WithTransport(transport)` - Custom base transport
+- `WithTransport(transport)` - Custom base transport (must be `*http.Transport` if using TLS options)
 - `WithSkipAuthFunc(func(*http.Request) bool)` - Skip auth conditionally
 
 **Authentication Options:**

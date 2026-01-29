@@ -50,6 +50,23 @@ type clientOptions struct {
 	errors []error // Errors collected from options
 }
 
+// hasTLSOptions returns true if any TLS-related options are configured.
+func (o *clientOptions) hasTLSOptions() bool {
+	return len(o.tlsCerts) > 0 ||
+		(len(o.clientCertPEM) > 0 && len(o.clientKeyPEM) > 0) ||
+		o.insecureSkipVerify
+}
+
+// isNonTransportRoundTripper returns true if the configured transport is not nil
+// and not an *http.Transport.
+func (o *clientOptions) isNonTransportRoundTripper() bool {
+	if o.transport == nil {
+		return false
+	}
+	_, ok := o.transport.(*http.Transport)
+	return !ok
+}
+
 // defaultClientOptions returns a clientOptions struct with sensible defaults.
 func defaultClientOptions() *clientOptions {
 	return &clientOptions{
@@ -101,7 +118,30 @@ func WithHMACHeaders(signature, timestamp, nonce string) ClientOption {
 //
 // Default: http.DefaultTransport
 //
-// Example:
+// IMPORTANT: If you use TLS options (WithTLSCert*, WithMTLS*, WithInsecureSkipVerify),
+// you must provide an *http.Transport (not any other RoundTripper implementation).
+// Non-Transport RoundTrippers cannot be combined with TLS options and will return an error.
+//
+// If you need custom middleware (logging, metrics, tracing) with TLS options,
+// configure TLS in your *http.Transport and wrap it with your middleware after
+// creating the client:
+//
+//	// 1. Create Transport with TLS
+//	transport := &http.Transport{
+//	    TLSClientConfig: &tls.Config{
+//	        RootCAs: certPool,
+//	    },
+//	}
+//
+//	// 2. Create authenticated client
+//	authClient, _ := NewAuthClient(AuthModeHMAC, secret, WithTransport(transport))
+//
+//	// 3. Wrap with your middleware
+//	authClient.Transport = &LoggingRoundTripper{
+//	    Next: authClient.Transport,
+//	}
+//
+// Example (basic):
 //
 //	customTransport := &http.Transport{
 //	    MaxIdleConns: 100,
