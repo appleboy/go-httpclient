@@ -17,6 +17,22 @@ const (
 	maxCertSize = 1 * 1024 * 1024 // 1MB
 )
 
+// TLS configuration constants for enhanced security.
+var (
+	// defaultTLSMinVersion enforces TLS 1.3 minimum for enhanced security.
+	// TLS 1.3 provides stronger security with improved cipher suites, forward secrecy,
+	// faster handshakes, and removal of vulnerable algorithms from TLS 1.2.
+	defaultTLSMinVersion uint16 = tls.VersionTLS13
+
+	// defaultTLSCipherSuites defines the secure cipher suites for TLS 1.3.
+	// These are the recommended cipher suites providing strong encryption and performance.
+	defaultTLSCipherSuites = []uint16{
+		tls.TLS_AES_128_GCM_SHA256,
+		tls.TLS_AES_256_GCM_SHA384,
+		tls.TLS_CHACHA20_POLY1305_SHA256,
+	}
+)
+
 // authRoundTripper implements http.RoundTripper with automatic authentication.
 type authRoundTripper struct {
 	config          *AuthConfig
@@ -293,7 +309,8 @@ func buildTLSTransport(
 	tlsConfig := &tls.Config{
 		RootCAs:      certPool,
 		Certificates: clientCerts,
-		MinVersion:   tls.VersionTLS12, // Enforce TLS 1.2 minimum for security
+		MinVersion:   defaultTLSMinVersion,
+		CipherSuites: defaultTLSCipherSuites,
 		// #nosec G402 - InsecureSkipVerify is intentionally configurable via WithInsecureSkipVerify()
 		// for testing/development environments. Production usage warning is documented in the function.
 		InsecureSkipVerify: insecureSkipVerify,
