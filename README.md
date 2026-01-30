@@ -873,7 +873,7 @@ Main configuration struct for authentication:
 
 ```go
 type AuthConfig struct {
-    Mode            string // "none", "simple", or "hmac"
+    Mode            string // "none", "simple", "hmac" or "github"
     Secret          string // Shared secret key
     HeaderName      string // Custom header for simple mode (default: "X-API-Secret")
     SignatureHeader string // Signature header for HMAC (default: "X-Signature")

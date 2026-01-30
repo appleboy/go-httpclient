@@ -75,7 +75,7 @@ func (s SecureString) IsEmpty() bool {
 
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	Mode            string       // "none", "simple", or "hmac"
+	Mode            string       // "none", "simple", "hmac" or "github"
 	Secret          SecureString // Shared secret key (stored securely, redacted in logs)
 	HeaderName      string       // Custom header name for simple mode (default: "X-API-Secret")
 	SignatureHeader string       // Signature header name for HMAC mode (default: "X-Signature")
