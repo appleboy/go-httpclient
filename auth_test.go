@@ -1401,9 +1401,9 @@ func TestAuthConfig_GitHubMode_EndToEnd(t *testing.T) {
 
 	// #nosec G112 - ReadHeaderTimeout not needed for test server
 	ts := http.Server{Handler: server}
-	// #nosec G102 - Binding to all interfaces (":0") is safe for test server
+	// #nosec G102 - Binding to localhost (":0") is safe for test server
 	lc := net.ListenConfig{}
-	listener, err := lc.Listen(context.Background(), "tcp", ":0")
+	listener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to listen: %v", err)
 	}

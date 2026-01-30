@@ -289,8 +289,9 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		}
 
 		tlsConfig := &tls.Config{
-			RootCAs:    systemCerts,
-			MinVersion: tls.VersionTLS12,
+			RootCAs:      systemCerts,
+			MinVersion:   defaultTLSMinVersion,
+			CipherSuites: defaultTLSCipherSuites,
 		}
 
 		secureClient := &http.Client{
