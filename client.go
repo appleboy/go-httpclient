@@ -223,7 +223,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	// Create AuthConfig (internal use)
 	config := &AuthConfig{
 		Mode:            mode,
-		Secret:          secret,
+		Secret:          NewSecureString(secret),
 		HeaderName:      options.headerName,
 		SignatureHeader: options.signatureHeader,
 		TimestampHeader: options.timestampHeader,

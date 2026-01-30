@@ -28,7 +28,7 @@ const (
 func TestAuthConfig_addAuthHeaders_None(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeNone,
-		Secret: testAPISecret,
+		Secret: NewSecureString(testAPISecret),
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -67,7 +67,7 @@ func TestAuthConfig_addAuthHeaders_Simple(t *testing.T) {
 			name: "Simple mode with default header",
 			config: &AuthConfig{
 				Mode:   AuthModeSimple,
-				Secret: "test-secret-123",
+				Secret: NewSecureString("test-secret-123"),
 			},
 			wantHeader: "X-API-Secret",
 			wantValue:  "test-secret-123",
@@ -77,7 +77,7 @@ func TestAuthConfig_addAuthHeaders_Simple(t *testing.T) {
 			name: "Simple mode with custom header",
 			config: &AuthConfig{
 				Mode:       AuthModeSimple,
-				Secret:     "my-custom-secret",
+				Secret:     NewSecureString("my-custom-secret"),
 				HeaderName: "X-Custom-Auth",
 			},
 			wantHeader: "X-Custom-Auth",
@@ -88,7 +88,7 @@ func TestAuthConfig_addAuthHeaders_Simple(t *testing.T) {
 			name: "Simple mode without secret",
 			config: &AuthConfig{
 				Mode:   AuthModeSimple,
-				Secret: "",
+				Secret: NewSecureString(""),
 			},
 			wantErr: true,
 		},
@@ -125,7 +125,7 @@ func TestAuthConfig_addAuthHeaders_Simple(t *testing.T) {
 func TestAuthConfig_addAuthHeaders_HMAC(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret-hmac",
+		Secret: NewSecureString("test-secret-hmac"),
 	}
 
 	body := []byte(`{"username":"test","password":"pass123"}`)
@@ -180,7 +180,7 @@ func TestAuthConfig_addAuthHeaders_HMAC(t *testing.T) {
 func TestAuthConfig_addAuthHeaders_HMAC_CustomHeaders(t *testing.T) {
 	config := &AuthConfig{
 		Mode:            AuthModeHMAC,
-		Secret:          "test-secret",
+		Secret:          NewSecureString("test-secret"),
 		SignatureHeader: "X-Custom-Sig",
 		TimestampHeader: "X-Custom-Time",
 		NonceHeader:     "X-Custom-Nonce",
@@ -216,7 +216,7 @@ func TestAuthConfig_addAuthHeaders_HMAC_CustomHeaders(t *testing.T) {
 
 func TestAuthConfig_calculateHMACSignature(t *testing.T) {
 	config := &AuthConfig{
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	timestamp := int64(1704067200) // Fixed timestamp for testing
@@ -246,7 +246,7 @@ func TestAuthConfig_calculateHMACSignature(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"username":"test"}`)
@@ -276,7 +276,7 @@ func TestAuthConfig_VerifyHMACSignature(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_InvalidSignature(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"username":"test"}`)
@@ -305,7 +305,7 @@ func TestAuthConfig_VerifyHMACSignature_InvalidSignature(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_ExpiredTimestamp(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"username":"test"}`)
@@ -336,7 +336,7 @@ func TestAuthConfig_VerifyHMACSignature_ExpiredTimestamp(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_MissingHeaders(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	tests := []struct {
@@ -414,7 +414,7 @@ func TestNewAuthConfig(t *testing.T) {
 		t.Errorf("Mode = %v, want hmac", config.Mode)
 	}
 
-	if config.Secret != "my-secret" {
+	if string(config.Secret.Bytes()) != "my-secret" {
 		t.Errorf("Secret = %v, want my-secret", config.Secret)
 	}
 
@@ -443,7 +443,7 @@ func TestNewAuthConfig(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	originalBody := []byte(`{"username":"test","password":"secret123"}`)
@@ -500,7 +500,7 @@ func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"username":"test"}`)
@@ -542,7 +542,7 @@ func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"action":"view"}`)
@@ -613,7 +613,7 @@ func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_WithinLimit(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	// Create a body that's 1KB (well within 10MB default limit)
@@ -646,7 +646,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_WithinLimit(t *testing.T) 
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExceedsLimit(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	// Create a body that's 2KB
@@ -687,7 +687,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExceedsLimit(t *testing.T)
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExactLimit(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	// Create a body that's exactly 1KB
@@ -721,7 +721,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExactLimit(t *testing.T) {
 func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	// Create a body that's 5MB (should pass with 10MB default)
@@ -776,7 +776,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T)
 func TestAuthConfig_VerifyHMACSignature_MultipleOptions(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"test":"data"}`)
@@ -819,7 +819,7 @@ func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
 		{
 			name: "Valid secret with default header",
 			config: &AuthConfig{
-				Secret: "test-secret-123",
+				Secret: NewSecureString("test-secret-123"),
 			},
 			headerName: "X-API-Secret",
 			secret:     "test-secret-123",
@@ -828,7 +828,7 @@ func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
 		{
 			name: "Valid secret with custom header",
 			config: &AuthConfig{
-				Secret:     "my-custom-secret",
+				Secret:     NewSecureString("my-custom-secret"),
 				HeaderName: "X-Custom-Auth",
 			},
 			headerName: "X-Custom-Auth",
@@ -838,7 +838,7 @@ func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
 		{
 			name: "Invalid secret",
 			config: &AuthConfig{
-				Secret: "correct-secret",
+				Secret: NewSecureString("correct-secret"),
 			},
 			headerName: "X-API-Secret",
 			secret:     "wrong-secret",
@@ -848,7 +848,7 @@ func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
 		{
 			name: "Missing header",
 			config: &AuthConfig{
-				Secret: "test-secret",
+				Secret: NewSecureString("test-secret"),
 			},
 			headerName: "X-API-Secret",
 			secret:     "",
@@ -858,7 +858,7 @@ func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
 		{
 			name: "Empty secret in config",
 			config: &AuthConfig{
-				Secret: "",
+				Secret: NewSecureString(""),
 			},
 			headerName: "X-API-Secret",
 			secret:     "some-secret",
@@ -908,7 +908,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "AuthModeNone - no verification",
 			config: &AuthConfig{
 				Mode:   AuthModeNone,
-				Secret: "test-secret",
+				Secret: NewSecureString("test-secret"),
 			},
 			setup:   func(req *http.Request, c *AuthConfig) {},
 			wantErr: false,
@@ -917,7 +917,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "Empty mode - no verification",
 			config: &AuthConfig{
 				Mode:   "",
-				Secret: "test-secret",
+				Secret: NewSecureString("test-secret"),
 			},
 			setup:   func(req *http.Request, c *AuthConfig) {},
 			wantErr: false,
@@ -932,7 +932,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "AuthModeSimple - valid secret",
 			config: &AuthConfig{
 				Mode:   AuthModeSimple,
-				Secret: "test-secret",
+				Secret: NewSecureString("test-secret"),
 			},
 			setup: func(req *http.Request, c *AuthConfig) {
 				req.Header.Set("X-API-Secret", "test-secret")
@@ -943,7 +943,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "AuthModeSimple - invalid secret",
 			config: &AuthConfig{
 				Mode:   AuthModeSimple,
-				Secret: "correct-secret",
+				Secret: NewSecureString("correct-secret"),
 			},
 			setup: func(req *http.Request, c *AuthConfig) {
 				req.Header.Set("X-API-Secret", "wrong-secret")
@@ -955,7 +955,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "AuthModeHMAC - valid signature",
 			config: &AuthConfig{
 				Mode:   AuthModeHMAC,
-				Secret: "hmac-secret",
+				Secret: NewSecureString("hmac-secret"),
 			},
 			setup: func(req *http.Request, c *AuthConfig) {
 				body := []byte(`{"test":"data"}`)
@@ -971,7 +971,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "AuthModeHMAC - invalid signature",
 			config: &AuthConfig{
 				Mode:   AuthModeHMAC,
-				Secret: "hmac-secret",
+				Secret: NewSecureString("hmac-secret"),
 			},
 			setup: func(req *http.Request, c *AuthConfig) {
 				body := []byte(`{"test":"data"}`)
@@ -987,7 +987,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 			name: "Unsupported mode",
 			config: &AuthConfig{
 				Mode:   "unsupported-mode",
-				Secret: "test-secret",
+				Secret: NewSecureString("test-secret"),
 			},
 			setup:   func(req *http.Request, c *AuthConfig) {},
 			wantErr: true,
@@ -1028,7 +1028,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 func TestAuthConfig_Verify_WithOptions(t *testing.T) {
 	config := &AuthConfig{
 		Mode:   AuthModeHMAC,
-		Secret: "test-secret",
+		Secret: NewSecureString("test-secret"),
 	}
 
 	body := []byte(`{"test":"data"}`)
@@ -1060,7 +1060,7 @@ func TestAuthConfig_Verify_WithOptions(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_Success tests successful GitHub signature verification.
 func TestAuthConfig_VerifyGitHubSignature_Success(t *testing.T) {
-	secret := "test-secret" //nolint:goconst // test data
+	secret := testAPISecret
 	body := `{"action":"opened","number":123}`
 
 	// Create request
@@ -1090,7 +1090,7 @@ func TestAuthConfig_VerifyGitHubSignature_Success(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_InvalidSignature tests rejection of invalid signatures.
 func TestAuthConfig_VerifyGitHubSignature_InvalidSignature(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	body := `{"action":"opened"}`
 
 	req, err := http.NewRequestWithContext(
@@ -1169,7 +1169,7 @@ func TestAuthConfig_VerifyGitHubSignature_MalformedSignature(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_BodyPreservation tests that body can be read after verification.
 func TestAuthConfig_VerifyGitHubSignature_BodyPreservation(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	body := `{"test":"data"}`
 
 	req, err := http.NewRequestWithContext(
@@ -1207,7 +1207,7 @@ func TestAuthConfig_VerifyGitHubSignature_BodyPreservation(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_EmptyBody tests that empty body is valid.
 func TestAuthConfig_VerifyGitHubSignature_EmptyBody(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	body := ""
 
 	req, err := http.NewRequestWithContext(
@@ -1234,7 +1234,7 @@ func TestAuthConfig_VerifyGitHubSignature_EmptyBody(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_BodyTooLarge tests rejection of oversized bodies.
 func TestAuthConfig_VerifyGitHubSignature_BodyTooLarge(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	body := strings.Repeat("x", 11*1024*1024) // 11MB > 10MB default limit
 
 	req, err := http.NewRequestWithContext(
@@ -1261,7 +1261,7 @@ func TestAuthConfig_VerifyGitHubSignature_BodyTooLarge(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_CustomBodyLimit tests custom body size limit.
 func TestAuthConfig_VerifyGitHubSignature_CustomBodyLimit(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	body := strings.Repeat("x", 3*1024) // 3KB
 
 	req, err := http.NewRequestWithContext(
@@ -1317,7 +1317,7 @@ func TestAuthConfig_VerifyGitHubSignature_EmptySecret(t *testing.T) {
 
 // TestAuthConfig_AddGitHubAuth_Success tests client-side GitHub signature addition.
 func TestAuthConfig_AddGitHubAuth_Success(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	body := []byte(`{"test":"data"}`)
 
 	req, err := http.NewRequestWithContext(
@@ -1380,7 +1380,7 @@ func TestAuthConfig_AddGitHubAuth_EmptySecret(t *testing.T) {
 
 // TestAuthConfig_GitHubMode_EndToEnd tests end-to-end client signing and server verification.
 func TestAuthConfig_GitHubMode_EndToEnd(t *testing.T) {
-	secret := "test-secret"
+	secret := testAPISecret
 	payload := []byte(`{"action":"opened","pull_request":{"id":123}}`)
 
 	// Create test server with GitHub verification

@@ -807,7 +807,7 @@ func TestWithRequestID_PreservesUserProvidedID(t *testing.T) {
 // TestWithRequestID_WithAuthentication tests request ID with HMAC authentication
 func TestWithRequestID_WithAuthentication(t *testing.T) {
 	testRequestID := "auth-request-123"
-	secret := "test-secret"
+	secret := testSharedSecret
 
 	// Create test server that verifies both request ID and authentication
 	var receivedRequestID string
