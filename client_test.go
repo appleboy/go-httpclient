@@ -487,6 +487,53 @@ func TestNewAuthClient_WithCustomTransport(t *testing.T) {
 	}
 }
 
+// TestNewAuthClient_WithMinTLSVersion tests the WithMinTLSVersion option
+func TestNewAuthClient_WithMinTLSVersion(t *testing.T) {
+	t.Run("Default TLS 1.2", func(t *testing.T) {
+		client, err := NewAuthClient(AuthModeNone, "")
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		// Verify client was created successfully
+		if client == nil {
+			t.Fatal("Expected non-nil client")
+		}
+	})
+
+	t.Run("Explicit TLS 1.3", func(t *testing.T) {
+		client, err := NewAuthClient(
+			AuthModeNone,
+			"",
+			WithMinTLSVersion(0x0304), // tls.VersionTLS13
+		)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		// Verify client was created successfully
+		if client == nil {
+			t.Fatal("Expected non-nil client")
+		}
+	})
+
+	t.Run("Explicit TLS 1.2", func(t *testing.T) {
+		client, err := NewAuthClient(
+			AuthModeNone,
+			"",
+			WithMinTLSVersion(0x0303), // tls.VersionTLS12
+		)
+		if err != nil {
+			t.Fatalf("Failed to create client: %v", err)
+		}
+
+		// Verify client was created successfully
+		if client == nil {
+			t.Fatal("Expected non-nil client")
+		}
+	})
+}
+
 // TestNewAuthClient_MultipleOptions tests combining multiple options
 func TestNewAuthClient_MultipleOptions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

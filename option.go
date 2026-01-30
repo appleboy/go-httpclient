@@ -40,6 +40,7 @@ type clientOptions struct {
 
 	// TLS certificate options
 	tlsCerts           [][]byte // Custom TLS certificates in PEM format
+	minTLSVersion      uint16   // Minimum TLS version (default: TLS 1.2)
 	insecureSkipVerify bool     // Skip TLS certificate verification
 
 	// mTLS client certificate options
@@ -54,6 +55,7 @@ type clientOptions struct {
 func (o *clientOptions) hasTLSOptions() bool {
 	return len(o.tlsCerts) > 0 ||
 		(len(o.clientCertPEM) > 0 && len(o.clientKeyPEM) > 0) ||
+		o.minTLSVersion != 0 ||
 		o.insecureSkipVerify
 }
 
@@ -262,6 +264,30 @@ func WithInsecureSkipVerify(skip bool) ClientOption {
 	}
 }
 
+// WithMinTLSVersion sets the minimum TLS version for HTTPS connections.
+// By default, TLS 1.2 is used for backwards compatibility with older servers.
+//
+// Common values:
+//   - tls.VersionTLS12 (0x0303) - TLS 1.2 (default, widely supported)
+//   - tls.VersionTLS13 (0x0304) - TLS 1.3 (enhanced security, faster handshakes)
+//
+// Note: TLS 1.3 provides stronger security with improved cipher suites, forward secrecy,
+// and faster handshakes, but may not be supported by older servers. Use TLS 1.3 when
+// you control both client and server, or when security requirements mandate it.
+//
+// Example (enforce TLS 1.3):
+//
+//	client, err := httpclient.NewAuthClient(
+//	    httpclient.AuthModeHMAC,
+//	    "secret",
+//	    httpclient.WithMinTLSVersion(tls.VersionTLS13),
+//	)
+func WithMinTLSVersion(version uint16) ClientOption {
+	return func(opts *clientOptions) {
+		opts.minTLSVersion = version
+	}
+}
+
 // WithTLSCertFromURL downloads a TLS certificate from the specified URL and adds it
 // to the trusted certificate pool. This is useful for enterprise environments with
 // custom certificate authorities.
@@ -270,7 +296,7 @@ func WithInsecureSkipVerify(skip bool) ClientOption {
 // calling this function multiple times.
 //
 // Security: The download uses system certificate pool for TLS verification to prevent
-// MITM attacks during certificate retrieval. The connection enforces TLS 1.2 minimum.
+// MITM attacks during certificate retrieval. The connection enforces TLS 1.2+ security.
 //
 // Example:
 //
@@ -289,9 +315,8 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		}
 
 		tlsConfig := &tls.Config{
-			RootCAs:      systemCerts,
-			MinVersion:   defaultTLSMinVersion,
-			CipherSuites: defaultTLSCipherSuites,
+			RootCAs:    systemCerts,
+			MinVersion: defaultTLSMinVersion,
 		}
 
 		secureClient := &http.Client{

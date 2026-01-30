@@ -17,20 +17,13 @@ const (
 	maxCertSize = 1 * 1024 * 1024 // 1MB
 )
 
-// TLS configuration constants for enhanced security.
-var (
-	// defaultTLSMinVersion enforces TLS 1.3 minimum for enhanced security.
+// TLS configuration constants.
+const (
+	// defaultTLSMinVersion sets TLS 1.2 as the default minimum version for backwards compatibility.
+	// Users can opt into TLS 1.3 using WithMinTLSVersion(tls.VersionTLS13) for enhanced security.
 	// TLS 1.3 provides stronger security with improved cipher suites, forward secrecy,
 	// faster handshakes, and removal of vulnerable algorithms from TLS 1.2.
-	defaultTLSMinVersion uint16 = tls.VersionTLS13
-
-	// defaultTLSCipherSuites defines the secure cipher suites for TLS 1.3.
-	// These are the recommended cipher suites providing strong encryption and performance.
-	defaultTLSCipherSuites = []uint16{
-		tls.TLS_AES_128_GCM_SHA256,
-		tls.TLS_AES_256_GCM_SHA384,
-		tls.TLS_CHACHA20_POLY1305_SHA256,
-	}
+	defaultTLSMinVersion uint16 = tls.VersionTLS12
 )
 
 // authRoundTripper implements http.RoundTripper with automatic authentication.
@@ -222,16 +215,22 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 		)
 	}
 
-	// Configure TLS if custom certificates, mTLS, or insecureSkipVerify are provided
+	// Configure TLS if custom certificates, mTLS, custom TLS version, or insecureSkipVerify are provided
 	transport := options.transport
+	minTLSVersion := options.minTLSVersion
+	if minTLSVersion == 0 {
+		minTLSVersion = defaultTLSMinVersion
+	}
 	if len(options.tlsCerts) > 0 ||
 		(len(options.clientCertPEM) > 0 && len(options.clientKeyPEM) > 0) ||
+		options.minTLSVersion != 0 ||
 		options.insecureSkipVerify {
 		transport = buildTLSTransport(
 			options.transport,
 			options.tlsCerts,
 			options.clientCertPEM,
 			options.clientKeyPEM,
+			minTLSVersion,
 			options.insecureSkipVerify,
 		)
 	}
@@ -270,7 +269,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 }
 
 // buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates,
-// optional mTLS client certificates, and/or insecure skip verify.
+// optional mTLS client certificates, configurable minimum TLS version, and/or insecure skip verify.
 //
 // This function expects baseTransport to be either nil or an *http.Transport.
 // Non-Transport RoundTrippers should be rejected earlier via conflict detection.
@@ -278,6 +277,7 @@ func buildTLSTransport(
 	baseTransport http.RoundTripper,
 	certs [][]byte,
 	clientCertPEM, clientKeyPEM []byte,
+	minTLSVersion uint16,
 	insecureSkipVerify bool,
 ) http.RoundTripper {
 	// Start with system cert pool
@@ -309,8 +309,7 @@ func buildTLSTransport(
 	tlsConfig := &tls.Config{
 		RootCAs:      certPool,
 		Certificates: clientCerts,
-		MinVersion:   defaultTLSMinVersion,
-		CipherSuites: defaultTLSCipherSuites,
+		MinVersion:   minTLSVersion,
 		// #nosec G402 - InsecureSkipVerify is intentionally configurable via WithInsecureSkipVerify()
 		// for testing/development environments. Production usage warning is documented in the function.
 		InsecureSkipVerify: insecureSkipVerify,
