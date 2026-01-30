@@ -40,14 +40,47 @@ const (
 	DefaultVerifyMaxBodySize = 10 * 1024 * 1024 // Default maximum request body size (10MB)
 )
 
+// SecureString is a type that stores sensitive strings (secrets, API keys) and prevents
+// accidental leakage through logging or debugging output. When printed using fmt.Printf,
+// fmt.Println, or %v/%+v/%#v formatters, it displays "***REDACTED***" instead of the
+// actual value.
+type SecureString struct {
+	value []byte
+}
+
+// NewSecureString creates a new SecureString from a string value
+func NewSecureString(s string) SecureString {
+	return SecureString{value: []byte(s)}
+}
+
+// String implements fmt.Stringer interface to prevent accidental secret leakage
+func (s SecureString) String() string {
+	return "***REDACTED***"
+}
+
+// GoString implements fmt.GoStringer interface for %#v formatting
+func (s SecureString) GoString() string {
+	return "***REDACTED***"
+}
+
+// Bytes returns the actual secret value as a byte slice for internal use
+func (s SecureString) Bytes() []byte {
+	return s.value
+}
+
+// IsEmpty returns true if the SecureString contains no data
+func (s SecureString) IsEmpty() bool {
+	return len(s.value) == 0
+}
+
 // AuthConfig holds authentication configuration
 type AuthConfig struct {
-	Mode            string // "none", "simple", or "hmac"
-	Secret          string // Shared secret key
-	HeaderName      string // Custom header name for simple mode (default: "X-API-Secret")
-	SignatureHeader string // Signature header name for HMAC mode (default: "X-Signature")
-	TimestampHeader string // Timestamp header name for HMAC mode (default: "X-Timestamp")
-	NonceHeader     string // Nonce header name for HMAC mode (default: "X-Nonce")
+	Mode            string       // "none", "simple", or "hmac"
+	Secret          SecureString // Shared secret key (stored securely, redacted in logs)
+	HeaderName      string       // Custom header name for simple mode (default: "X-API-Secret")
+	SignatureHeader string       // Signature header name for HMAC mode (default: "X-Signature")
+	TimestampHeader string       // Timestamp header name for HMAC mode (default: "X-Timestamp")
+	NonceHeader     string       // Nonce header name for HMAC mode (default: "X-Nonce")
 }
 
 // VerifyOptions holds options for signature verification
@@ -91,7 +124,7 @@ func WithVerifyMaxBodySize(size int64) VerifyOption {
 func NewAuthConfig(mode, secret string) *AuthConfig {
 	config := &AuthConfig{
 		Mode:            mode,
-		Secret:          secret,
+		Secret:          NewSecureString(secret),
 		HeaderName:      DefaultAPISecretHeader,
 		SignatureHeader: DefaultSignatureHeader,
 		TimestampHeader: DefaultTimestampHeader,
@@ -127,7 +160,7 @@ func (c *AuthConfig) addAuthHeaders(req *http.Request, body []byte) error {
 
 // addSimpleAuth adds simple API secret header
 func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
-	if c.Secret == "" {
+	if c.Secret.IsEmpty() {
 		return fmt.Errorf("secret is required for simple authentication")
 	}
 
@@ -136,13 +169,13 @@ func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
 		headerName = DefaultAPISecretHeader
 	}
 
-	req.Header.Set(headerName, c.Secret)
+	req.Header.Set(headerName, string(c.Secret.Bytes()))
 	return nil
 }
 
 // addHMACAuth adds HMAC signature headers
 func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
-	if c.Secret == "" {
+	if c.Secret.IsEmpty() {
 		return fmt.Errorf("secret is required for HMAC authentication")
 	}
 
@@ -184,12 +217,12 @@ func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
 // addGitHubAuth adds GitHub-style authentication headers to the HTTP request.
 // GitHub signature format: "sha256=" + HMAC-SHA256(secret, body)
 func (c *AuthConfig) addGitHubAuth(req *http.Request, body []byte) error {
-	if c.Secret == "" {
+	if c.Secret.IsEmpty() {
 		return fmt.Errorf("secret is required for GitHub mode authentication")
 	}
 
 	// Calculate signature: HMAC-SHA256(secret, body)
-	h := hmac.New(sha256.New, []byte(c.Secret))
+	h := hmac.New(sha256.New, c.Secret.Bytes())
 	h.Write(body)
 	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
 
@@ -218,7 +251,7 @@ func (c *AuthConfig) calculateHMACSignature(
 	)
 
 	// Calculate HMAC-SHA256
-	h := hmac.New(sha256.New, []byte(c.Secret))
+	h := hmac.New(sha256.New, c.Secret.Bytes())
 	h.Write([]byte(message))
 
 	return hex.EncodeToString(h.Sum(nil))
@@ -279,7 +312,7 @@ func (c *AuthConfig) Verify(req *http.Request, opts ...VerifyOption) error {
 // It checks that the secret in the configured header matches the expected secret.
 // This is an internal method. External users should use Verify() instead.
 func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
-	if c.Secret == "" {
+	if c.Secret.IsEmpty() {
 		return fmt.Errorf("secret is required for simple authentication verification")
 	}
 
@@ -294,7 +327,7 @@ func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 	}
 
 	// Use constant-time comparison to prevent timing attacks
-	if !hmac.Equal([]byte(secret), []byte(c.Secret)) {
+	if !hmac.Equal([]byte(secret), c.Secret.Bytes()) {
 		return fmt.Errorf("authentication failed: invalid secret")
 	}
 
@@ -308,7 +341,7 @@ func (c *AuthConfig) verifyHMACSignature(
 	req *http.Request,
 	opts ...VerifyOption,
 ) error {
-	if c.Secret == "" {
+	if c.Secret.IsEmpty() {
 		return fmt.Errorf("secret is required for HMAC verification")
 	}
 
@@ -406,7 +439,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	req *http.Request,
 	opts ...VerifyOption,
 ) error {
-	if c.Secret == "" {
+	if c.Secret.IsEmpty() {
 		return fmt.Errorf("secret is required for GitHub mode verification")
 	}
 
@@ -453,7 +486,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	req.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	// Calculate expected signature
-	h := hmac.New(sha256.New, []byte(c.Secret))
+	h := hmac.New(sha256.New, c.Secret.Bytes())
 	h.Write(body)
 	expectedSignature := "sha256=" + hex.EncodeToString(h.Sum(nil))
 
