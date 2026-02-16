@@ -68,3 +68,31 @@ Run examples: `go run _example/<example-name>/main.go`
 - All tests must pass on both Ubuntu and macOS
 - Test coverage must be >80% (currently ~90%)
 - All PRs must pass golangci-lint with zero warnings
+
+## Coding Conventions
+
+1. **Zero dependencies** - Only use Go standard library
+2. **No breaking changes to functional options** - The public API surface is small and stable
+3. **Avoid if-else nesting** - Prefer early returns and guard clauses:
+
+   ```go
+   // Bad: nested if-else
+   if condition {
+       // long logic
+   } else {
+       return err
+   }
+
+   // Good: early return
+   if !condition {
+       return err
+   }
+   // long logic
+   ```
+
+   Use switch statements or lookup tables for multiple conditions instead of long if-else chains.
+4. **Testing is mandatory** - All changes MUST:
+   - Pass `make test` and `make lint` before committing
+   - Include corresponding test cases for new functionality
+   - Include regression tests for bug fixes
+   - Maintain or improve test coverage
