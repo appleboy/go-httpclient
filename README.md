@@ -43,7 +43,8 @@ A lightweight, flexible Go package for adding configurable authentication to HTT
       - [AuthConfig](#authconfig)
     - [Constants](#constants)
     - [Functions](#functions)
-      - [NewAuthClient (Recommended)](#newauthclient-recommended)
+      - [NewClient](#newclient)
+      - [NewAuthClient](#newauthclient)
       - [Client Options](#client-options)
       - [NewAuthConfig](#newauthconfig)
       - [Verify](#verify)
@@ -132,7 +133,37 @@ go get github.com/appleboy/go-httpclient
 
 ### Quick Start
 
-Automatic Authentication with `NewAuthClient`:
+**Option 1: Simple HTTP Client (No Authentication)**
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/appleboy/go-httpclient"
+)
+
+func main() {
+    // Create a simple HTTP client
+    client, err := httpclient.NewClient()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Make requests - just like http.Client!
+    resp, err := client.Get("https://api.example.com/public")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    fmt.Println("Request sent successfully")
+}
+```
+
+**Option 2: Authenticated HTTP Client**
 
 ```go
 package main
@@ -140,13 +171,17 @@ package main
 import (
     "bytes"
     "fmt"
+    "log"
 
     "github.com/appleboy/go-httpclient"
 )
 
 func main() {
     // Create authenticated HTTP client
-    client := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "your-secret-key")
+    client, err := httpclient.NewAuthClient(httpclient.AuthModeHMAC, "your-secret-key")
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // Send request - authentication headers added automatically!
     body := []byte(`{"user": "john"}`)
@@ -156,7 +191,7 @@ func main() {
         bytes.NewReader(body),
     )
     if err != nil {
-        panic(err)
+        log.Fatal(err)
     }
     defer resp.Body.Close()
 
@@ -170,12 +205,25 @@ For complete, runnable examples, see the [`_example`](_example/) directory. Each
 
 #### No Authentication
 
-For public endpoints or when authentication is not required:
+For public endpoints or when authentication is not required, use the convenient `NewClient()` function:
 
 ```go
-client := httpclient.NewAuthClient(httpclient.AuthModeNone, "")
+// Recommended: Use NewClient() for clarity
+client, err := httpclient.NewClient()
+if err != nil {
+    log.Fatal(err)
+}
 resp, err := client.Get("https://api.example.com/public")
 // No authentication headers added
+
+// With custom configuration
+client, err := httpclient.NewClient(
+    httpclient.WithTimeout(10*time.Second),
+    httpclient.WithTLSCertFromFile("/etc/ssl/certs/ca.crt"),
+)
+
+// Alternative: Use NewAuthClient with AuthModeNone
+client, err := httpclient.NewAuthClient(httpclient.AuthModeNone, "")
 ```
 
 #### Simple API Key Authentication
@@ -910,31 +958,64 @@ const (
 
 ### Functions
 
-#### NewAuthClient (Recommended)
+#### NewClient
 
 ```go
-func NewAuthClient(mode, secret string, opts ...ClientOption) *http.Client
+func NewClient(opts ...ClientOption) (*http.Client, error)
+```
+
+Creates a standard HTTP client without authentication. This is a convenience wrapper around `NewAuthClient` with `AuthModeNone`.
+
+**Parameters:**
+
+- `opts`: Optional configuration (timeout, TLS certs, request ID, etc.)
+
+**Returns:** Configured `*http.Client` without authentication, or error if any option fails
+
+**Example:**
+
+```go
+// Basic usage
+client, err := httpclient.NewClient()
+if err != nil {
+    log.Fatal(err)
+}
+
+// With custom configuration
+client, err := httpclient.NewClient(
+    httpclient.WithTimeout(10*time.Second),
+    httpclient.WithTLSCertFromFile("/etc/ssl/certs/ca.crt"),
+)
+```
+
+#### NewAuthClient
+
+```go
+func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, error)
 ```
 
 Creates an HTTP client with automatic authentication. All requests are signed automatically based on the configured mode.
 
 **Parameters:**
 
-- `mode`: Authentication mode (`AuthModeNone`, `AuthModeSimple`, or `AuthModeHMAC`)
+- `mode`: Authentication mode (`AuthModeNone`, `AuthModeSimple`, `AuthModeHMAC`, or `AuthModeGitHub`)
 - `secret`: Shared secret key
 - `opts`: Optional configuration (timeout, body limits, custom headers, etc.)
 
-**Returns:** Configured `*http.Client` with automatic authentication
+**Returns:** Configured `*http.Client` with automatic authentication, or error if any option fails
 
 **Example:**
 
 ```go
-client := httpclient.NewAuthClient(
+client, err := httpclient.NewAuthClient(
     httpclient.AuthModeHMAC,
     "secret",
     httpclient.WithTimeout(10*time.Second),
     httpclient.WithMaxBodySize(5*1024*1024),
 )
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 #### Client Options

@@ -48,6 +48,81 @@ func TestNewAuthClient_NoneMode(t *testing.T) {
 	}
 }
 
+// TestNewClient tests the convenience wrapper for creating clients without authentication
+func TestNewClient(t *testing.T) {
+	tests := []struct {
+		name string
+		opts []ClientOption
+	}{
+		{
+			name: "basic client without options",
+			opts: nil,
+		},
+		{
+			name: "client with timeout option",
+			opts: []ClientOption{WithTimeout(5 * time.Second)},
+		},
+		{
+			name: "client with multiple options",
+			opts: []ClientOption{
+				WithTimeout(10 * time.Second),
+				WithMaxBodySize(1024 * 1024), // 1MB
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewClient(tt.opts...)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			if client == nil {
+				t.Fatal("Expected non-nil client")
+			}
+
+			// Test that the client works and no auth headers are added
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Verify no auth headers were added
+					if r.Header.Get("X-API-Secret") != "" ||
+						r.Header.Get("X-Signature") != "" ||
+						r.Header.Get("X-Timestamp") != "" ||
+						r.Header.Get("X-Nonce") != "" {
+						t.Error("No auth headers should be added when using NewClient()")
+					}
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte("OK"))
+				}),
+			)
+			defer server.Close()
+
+			// Make a request
+			req, _ := http.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				server.URL,
+				nil,
+			)
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Request failed: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", resp.StatusCode)
+			}
+
+			body, _ := io.ReadAll(resp.Body)
+			if string(body) != "OK" {
+				t.Errorf("Expected body 'OK', got '%s'", string(body))
+			}
+		})
+	}
+}
+
 // TestNewAuthClient_SimpleMode tests client with simple authentication
 func TestNewAuthClient_SimpleMode(t *testing.T) {
 	secret := "test-secret-key"
@@ -490,7 +565,7 @@ func TestNewAuthClient_WithCustomTransport(t *testing.T) {
 // TestNewAuthClient_WithMinTLSVersion tests the WithMinTLSVersion option
 func TestNewAuthClient_WithMinTLSVersion(t *testing.T) {
 	t.Run("Default TLS 1.2", func(t *testing.T) {
-		client, err := NewAuthClient(AuthModeNone, "")
+		client, err := NewClient()
 		if err != nil {
 			t.Fatalf("Failed to create client: %v", err)
 		}
@@ -957,7 +1032,7 @@ func TestWithRequestID_NoFunction(t *testing.T) {
 	defer server.Close()
 
 	// Create client without request ID function
-	client, err := NewAuthClient(AuthModeNone, "")
+	client, err := NewClient()
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
