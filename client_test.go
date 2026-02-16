@@ -83,21 +83,29 @@ func TestNewClient(t *testing.T) {
 			}
 
 			// Test that the client works and no auth headers are added
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Verify no auth headers were added
-				if r.Header.Get("X-API-Secret") != "" ||
-					r.Header.Get("X-Signature") != "" ||
-					r.Header.Get("X-Timestamp") != "" ||
-					r.Header.Get("X-Nonce") != "" {
-					t.Error("No auth headers should be added when using NewClient()")
-				}
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("OK"))
-			}))
+			server := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Verify no auth headers were added
+					if r.Header.Get("X-API-Secret") != "" ||
+						r.Header.Get("X-Signature") != "" ||
+						r.Header.Get("X-Timestamp") != "" ||
+						r.Header.Get("X-Nonce") != "" {
+						t.Error("No auth headers should be added when using NewClient()")
+					}
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte("OK"))
+				}),
+			)
 			defer server.Close()
 
 			// Make a request
-			resp, err := client.Get(server.URL)
+			req, _ := http.NewRequestWithContext(
+				context.Background(),
+				http.MethodGet,
+				server.URL,
+				nil,
+			)
+			resp, err := client.Do(req)
 			if err != nil {
 				t.Fatalf("Request failed: %v", err)
 			}
