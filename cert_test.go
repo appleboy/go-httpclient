@@ -462,7 +462,10 @@ func TestTLSCertWithNonTransportRoundTripper(t *testing.T) {
 					errMsg := err.Error()
 					if !strings.Contains(errMsg, "TLS options") &&
 						!strings.Contains(errMsg, "invalid mTLS") {
-						t.Errorf("Error message should mention TLS options or validation, got: %s", errMsg)
+						t.Errorf(
+							"Error message should mention TLS options or validation, got: %s",
+							errMsg,
+						)
 					}
 				}
 				if client != nil {
