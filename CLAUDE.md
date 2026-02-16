@@ -45,7 +45,7 @@ Run examples: `go run _example/<example-name>/main.go`
 
 ## Security Gotchas
 
-**Critical patterns** (violating these causes security vulnerabilities):
+**Critical patterns** (violating these patterns causes security vulnerabilities):
 
 - **Timing attack defense**: Use `hmac.Equal()` for signature comparison (never `==` or `bytes.Equal()`)
 - **Body preservation**: Must restore body after verification: `io.NopCloser(bytes.NewBuffer(body))`
