@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-HTTP request authentication library with four modes: None, Simple, HMAC-SHA256, GitHub webhook.
+This is an HTTP request authentication library that provides four authentication modes: None, Simple, HMAC-SHA256, and GitHub webhook.
 
 ## Quick Start
 
