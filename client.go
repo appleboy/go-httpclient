@@ -268,6 +268,39 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	}, nil
 }
 
+// NewClient creates a standard HTTP client without authentication.
+//
+// This is a convenience wrapper around NewAuthClient with AuthModeNone.
+// Use this when you need a plain HTTP client with optional custom configuration
+// like timeout, TLS certificates, or request ID tracking, but don't need authentication.
+//
+// Parameters:
+//   - opts: Optional configuration (timeout, TLS certs, request ID, etc.)
+//
+// Returns an error if any option fails (e.g., certificate file not found).
+//
+// Example (basic):
+//
+//	client, err := httpclient.NewClient()
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	resp, err := client.Get("https://api.example.com/public")
+//
+// Example (with options):
+//
+//	client, err := httpclient.NewClient(
+//	    httpclient.WithTimeout(10*time.Second),
+//	    httpclient.WithMaxBodySize(5*1024*1024),
+//	    httpclient.WithTLSCertFromFile("/etc/ssl/certs/ca.crt"),
+//	)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+func NewClient(opts ...ClientOption) (*http.Client, error) {
+	return NewAuthClient(AuthModeNone, "", opts...)
+}
+
 // buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates,
 // optional mTLS client certificates, configurable minimum TLS version, and/or insecure skip verify.
 //
