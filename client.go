@@ -40,6 +40,12 @@ type authRoundTripper struct {
 // It reads the request body, adds authentication headers, restores the body,
 // and forwards the request to the underlying transport.
 func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Resolve transport once (used in both skip-auth and normal paths)
+	transport := t.transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+
 	// Add request ID header if configured (before skip check to track all requests)
 	if t.requestIDFunc != nil {
 		headerName := t.requestIDHeader
@@ -54,11 +60,6 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 	// Check if authentication should be skipped for this request
 	if t.skipAuthFunc != nil && t.skipAuthFunc(req) {
-		// Skip authentication, use underlying transport directly
-		transport := t.transport
-		if transport == nil {
-			transport = http.DefaultTransport
-		}
 		return transport.RoundTrip(req)
 	}
 
@@ -100,12 +101,6 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	// Add authentication headers using existing logic
 	if err := t.config.addAuthHeaders(req, bodyBytes); err != nil {
 		return nil, fmt.Errorf("failed to add auth headers: %w", err)
-	}
-
-	// Use underlying transport (default to http.DefaultTransport)
-	transport := t.transport
-	if transport == nil {
-		transport = http.DefaultTransport
 	}
 
 	return transport.RoundTrip(req)

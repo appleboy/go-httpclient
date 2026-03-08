@@ -343,6 +343,8 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 
 		// #nosec G107 - URL is provided by the user, not external input
 		resp, err := secureClient.Do(req)
+		// Clean up idle connections from the temporary transport
+		secureClient.CloseIdleConnections()
 		if err != nil {
 			opts.errors = append(
 				opts.errors,

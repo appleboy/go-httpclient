@@ -242,17 +242,13 @@ func (c *AuthConfig) calculateHMACSignature(
 	method, path string,
 	body []byte,
 ) string {
-	// Create message: timestamp + method + path + body
-	message := fmt.Sprintf("%d%s%s%s",
-		timestamp,
-		method,
-		path,
-		string(body),
-	)
-
-	// Calculate HMAC-SHA256
+	// Calculate HMAC-SHA256: write each component directly to avoid
+	// intermediate string allocations (significant for large bodies).
 	h := hmac.New(sha256.New, c.Secret.Bytes())
-	h.Write([]byte(message))
+	h.Write([]byte(strconv.FormatInt(timestamp, 10)))
+	h.Write([]byte(method))
+	h.Write([]byte(path))
+	h.Write(body)
 
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -406,7 +402,7 @@ func (c *AuthConfig) verifyHMACSignature(
 	}
 
 	// Restore body for subsequent handlers
-	req.Body = io.NopCloser(bytes.NewBuffer(body))
+	req.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Calculate expected signature (including query parameters)
 	expectedSignature := c.calculateHMACSignature(
@@ -468,7 +464,11 @@ func (c *AuthConfig) verifyGitHubSignature(
 	}
 
 	// Read body with size limit
-	body, err := io.ReadAll(io.LimitReader(req.Body, options.MaxBodySize+1))
+	limit := options.MaxBodySize
+	if limit < math.MaxInt64 {
+		limit++
+	}
+	body, err := io.ReadAll(io.LimitReader(req.Body, limit))
 	if err != nil {
 		return fmt.Errorf("failed to read request body: %w", err)
 	}
@@ -483,7 +483,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	}
 
 	// Restore body for subsequent handlers
-	req.Body = io.NopCloser(bytes.NewBuffer(body))
+	req.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Calculate expected signature
 	h := hmac.New(sha256.New, c.Secret.Bytes())
