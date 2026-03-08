@@ -663,11 +663,14 @@ func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
 	var activeConns int32
 	connStateCh := make(chan struct{}, 10)
 
-	certServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/x-pem-file")
-		_, _ = w.Write(certPEM)
-	}))
+	certServer := httptest.NewUnstartedServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/x-pem-file")
+			_, _ = w.Write(certPEM)
+		}),
+	)
 	certServer.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		//exhaustive:enforce
 		switch state {
 		case http.StateNew:
 			atomic.AddInt32(&activeConns, 1)
@@ -677,6 +680,8 @@ func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
 			case connStateCh <- struct{}{}:
 			default:
 			}
+		case http.StateActive, http.StateIdle, http.StateHijacked:
+			// No action needed for these states
 		}
 	}
 	certServer.Start()
@@ -706,7 +711,10 @@ func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
 		case <-connStateCh:
 			// Connection state changed, re-check
 		case <-deadline:
-			t.Errorf("Connections not cleaned up after cert download: %d active connections remain", conns)
+			t.Errorf(
+				"Connections not cleaned up after cert download: %d active connections remain",
+				conns,
+			)
 			return
 		}
 	}
