@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -808,7 +809,7 @@ func TestWithRequestID(t *testing.T) {
 	requestIDCounter := 0
 	requestIDFunc := func() string {
 		requestIDCounter++
-		return "test-request-" + string(rune('0'+requestIDCounter))
+		return "test-request-" + strconv.Itoa(requestIDCounter)
 	}
 
 	// Create test server that verifies request ID header
