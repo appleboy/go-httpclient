@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -646,5 +647,118 @@ func TestTLSCertFromBytes_OversizedCertificate(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeds maximum size") {
 		t.Errorf("Expected error message about size limit, got: %s", err.Error())
+	}
+}
+
+// TestWithTLSCertFromURL_ConnectionCleanup verifies that the temporary HTTP
+// transport used to download certificates does not leak connections.
+// The server tracks active connections and asserts they are closed after the option completes.
+func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
+	certPEM, keyPEM, err := generateTestCertificate()
+	if err != nil {
+		t.Fatalf("Failed to generate test certificate: %v", err)
+	}
+
+	// Track active connections on the cert-serving server
+	var activeConns int32
+	connStateCh := make(chan struct{}, 10)
+
+	certServer := httptest.NewUnstartedServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/x-pem-file")
+			_, _ = w.Write(certPEM)
+		}),
+	)
+	certServer.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		//exhaustive:enforce
+		switch state {
+		case http.StateNew:
+			atomic.AddInt32(&activeConns, 1)
+		case http.StateClosed:
+			atomic.AddInt32(&activeConns, -1)
+			select {
+			case connStateCh <- struct{}{}:
+			default:
+			}
+		case http.StateActive, http.StateIdle, http.StateHijacked:
+			// No action needed for these states
+		}
+	}
+	certServer.Start()
+	defer certServer.Close()
+
+	// Create client which downloads cert from URL
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = NewAuthClient(
+		AuthModeNone,
+		"",
+		WithTLSCertFromURL(ctx, certServer.URL),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Wait for connections to close (with timeout)
+	deadline := time.After(5 * time.Second)
+	for {
+		conns := atomic.LoadInt32(&activeConns)
+		if conns <= 0 {
+			break
+		}
+		select {
+		case <-connStateCh:
+			// Connection state changed, re-check
+		case <-deadline:
+			t.Errorf(
+				"Connections not cleaned up after cert download: %d active connections remain",
+				conns,
+			)
+			return
+		}
+	}
+
+	// Create HTTPS test server using the same cert
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("Failed to create X509 key pair: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	server.TLS = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+	server.StartTLS()
+	defer server.Close()
+
+	// Verify the downloaded cert actually works
+	client, err := NewAuthClient(
+		AuthModeNone,
+		"",
+		WithTLSCertFromURL(ctx, certServer.URL),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
 	}
 }

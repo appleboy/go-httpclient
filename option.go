@@ -321,7 +321,8 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 
 		secureClient := &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: tlsConfig,
+				TLSClientConfig:   tlsConfig,
+				DisableKeepAlives: true, // Close connection after use; this is a one-shot download
 			},
 			Timeout: DefaultCertFetchTimeout,
 		}
