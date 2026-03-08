@@ -1490,3 +1490,134 @@ func TestAuthConfig_GitHubMode_PythonCompatibility(t *testing.T) {
 		t.Errorf("Verify() error = %v, want nil (Python-compatible signature failed)", err)
 	}
 }
+
+// TestCalculateHMACSignature_Consistency verifies that the streaming HMAC
+// implementation (io.WriteString per component) produces the same result
+// as concatenating "timestamp + method + path + body" into a single string.
+func TestCalculateHMACSignature_Consistency(t *testing.T) {
+	secret := "test-secret-key"
+	config := &AuthConfig{
+		Secret: NewSecureString(secret),
+	}
+
+	tests := []struct {
+		name      string
+		timestamp int64
+		method    string
+		path      string
+		body      []byte
+	}{
+		{
+			name:      "typical POST request",
+			timestamp: 1704067200,
+			method:    "POST",
+			path:      "/api/data",
+			body:      []byte(`{"key":"value"}`),
+		},
+		{
+			name:      "empty body (GET request)",
+			timestamp: 1704067200,
+			method:    "GET",
+			path:      "/api/items",
+			body:      nil,
+		},
+		{
+			name:      "path with query parameters",
+			timestamp: 1704067200,
+			method:    "GET",
+			path:      "/api/items?page=1&size=10",
+			body:      nil,
+		},
+		{
+			name:      "body with special characters",
+			timestamp: 1704067200,
+			method:    "POST",
+			path:      "/api/data",
+			body:      []byte("hello\nworld\t\x00binary"),
+		},
+		{
+			name:      "large body",
+			timestamp: 1704067200,
+			method:    "PUT",
+			path:      "/api/upload",
+			body:      bytes.Repeat([]byte("A"), 1024*1024), // 1MB
+		},
+		{
+			name:      "zero timestamp",
+			timestamp: 0,
+			method:    "DELETE",
+			path:      "/api/item/123",
+			body:      nil,
+		},
+		{
+			name:      "max int64 timestamp",
+			timestamp: 9223372036854775807,
+			method:    "POST",
+			path:      "/",
+			body:      []byte("data"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Get signature from the streaming implementation
+			got := config.calculateHMACSignature(tt.timestamp, tt.method, tt.path, tt.body)
+
+			// Compute expected signature using the original concatenation approach
+			message := strconv.FormatInt(tt.timestamp, 10) + tt.method + tt.path + string(tt.body)
+			h := hmac.New(sha256.New, []byte(secret))
+			h.Write([]byte(message))
+			want := hex.EncodeToString(h.Sum(nil))
+
+			if got != want {
+				t.Errorf("calculateHMACSignature() = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// TestCalculateHMACSignature_EndToEnd_WithVerify verifies that signatures
+// produced by the streaming HMAC implementation can be verified successfully.
+func TestCalculateHMACSignature_EndToEnd_WithVerify(t *testing.T) {
+	config := &AuthConfig{
+		Mode:            AuthModeHMAC,
+		Secret:          NewSecureString("e2e-test-secret"),
+		SignatureHeader: DefaultSignatureHeader,
+		TimestampHeader: DefaultTimestampHeader,
+		NonceHeader:     DefaultNonceHeader,
+	}
+
+	bodies := [][]byte{
+		nil,
+		[]byte(""),
+		[]byte(`{"action":"test"}`),
+		bytes.Repeat([]byte("X"), 64*1024), // 64KB
+	}
+
+	for _, body := range bodies {
+		timestamp := time.Now().Unix()
+		signature := config.calculateHMACSignature(timestamp, "POST", "/api/test", body)
+
+		reqBody := body
+		if reqBody == nil {
+			reqBody = []byte("")
+		}
+
+		req, err := http.NewRequestWithContext(
+			context.Background(),
+			"POST",
+			"http://example.com/api/test",
+			bytes.NewReader(reqBody),
+		)
+		if err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+
+		req.Header.Set(DefaultSignatureHeader, signature)
+		req.Header.Set(DefaultTimestampHeader, strconv.FormatInt(timestamp, 10))
+
+		if err := config.Verify(req); err != nil {
+			t.Errorf("Verify() failed for body size %d: %v", len(body), err)
+		}
+	}
+}

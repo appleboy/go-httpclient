@@ -243,11 +243,11 @@ func (c *AuthConfig) calculateHMACSignature(
 	body []byte,
 ) string {
 	// Calculate HMAC-SHA256: write each component directly to avoid
-	// intermediate string allocations (significant for large bodies).
+	// copying the entire body into an intermediate string via fmt.Sprintf.
 	h := hmac.New(sha256.New, c.Secret.Bytes())
-	h.Write([]byte(strconv.FormatInt(timestamp, 10)))
-	h.Write([]byte(method))
-	h.Write([]byte(path))
+	io.WriteString(h, strconv.FormatInt(timestamp, 10))
+	io.WriteString(h, method)
+	io.WriteString(h, path)
 	h.Write(body)
 
 	return hex.EncodeToString(h.Sum(nil))

@@ -321,7 +321,8 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 
 		secureClient := &http.Client{
 			Transport: &http.Transport{
-				TLSClientConfig: tlsConfig,
+				TLSClientConfig:   tlsConfig,
+				DisableKeepAlives: true, // Close connection after use; this is a one-shot download
 			},
 			Timeout: DefaultCertFetchTimeout,
 		}
@@ -343,8 +344,6 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 
 		// #nosec G107 - URL is provided by the user, not external input
 		resp, err := secureClient.Do(req)
-		// Clean up idle connections from the temporary transport
-		secureClient.CloseIdleConnections()
 		if err != nil {
 			opts.errors = append(
 				opts.errors,
