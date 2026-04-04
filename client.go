@@ -67,24 +67,25 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	// Handle nil or empty body (GET, DELETE, etc.)
 	var bodyBytes []byte
 	if req.Body != nil && req.Body != http.NoBody {
+		// Close original body on all paths to prevent resource leaks
+		originalBody := req.Body
+		defer originalBody.Close()
+
 		if t.maxBodySize > 0 {
 			// Read with size limit
 			var err error
-			bodyBytes, err = readBodyWithLimit(req.Body, t.maxBodySize)
+			bodyBytes, err = readBodyWithLimit(originalBody, t.maxBodySize)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to read request body: %w", err)
 			}
 		} else {
 			// No size limit
 			var err error
-			bodyBytes, err = io.ReadAll(req.Body)
+			bodyBytes, err = io.ReadAll(originalBody)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read request body: %w", err)
 			}
 		}
-
-		// Close original body
-		_ = req.Body.Close()
 
 		// Restore body for downstream transport
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
