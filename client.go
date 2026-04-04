@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -66,33 +67,25 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	// Handle nil or empty body (GET, DELETE, etc.)
 	var bodyBytes []byte
 	if req.Body != nil && req.Body != http.NoBody {
-		// Check body size limit to prevent OOM
+		// Close original body on all paths to prevent resource leaks
+		originalBody := req.Body
+		defer originalBody.Close()
+
 		if t.maxBodySize > 0 {
 			// Read with size limit
-			limitedReader := io.LimitReader(req.Body, t.maxBodySize+1)
 			var err error
-			bodyBytes, err = io.ReadAll(limitedReader)
+			bodyBytes, err = readBodyWithLimit(originalBody, t.maxBodySize)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read request body: %w", err)
-			}
-			// Check if body exceeds limit
-			if int64(len(bodyBytes)) > t.maxBodySize {
-				return nil, fmt.Errorf(
-					"request body exceeds maximum size of %d bytes",
-					t.maxBodySize,
-				)
 			}
 		} else {
 			// No size limit
 			var err error
-			bodyBytes, err = io.ReadAll(req.Body)
+			bodyBytes, err = io.ReadAll(originalBody)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read request body: %w", err)
 			}
 		}
-
-		// Close original body
-		_ = req.Body.Close()
 
 		// Restore body for downstream transport
 		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
@@ -220,7 +213,8 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 		(len(options.clientCertPEM) > 0 && len(options.clientKeyPEM) > 0) ||
 		options.minTLSVersion != 0 ||
 		options.insecureSkipVerify {
-		transport = buildTLSTransport(
+		var err error
+		transport, err = buildTLSTransport(
 			options.transport,
 			options.tlsCerts,
 			options.clientCertPEM,
@@ -228,6 +222,9 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 			minTLSVersion,
 			options.insecureSkipVerify,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to configure TLS transport: %w", err)
+		}
 	}
 
 	// Create AuthConfig (internal use)
@@ -307,7 +304,7 @@ func buildTLSTransport(
 	clientCertPEM, clientKeyPEM []byte,
 	minTLSVersion uint16,
 	insecureSkipVerify bool,
-) http.RoundTripper {
+) (http.RoundTripper, error) {
 	// Start with system cert pool
 	certPool, err := x509.SystemCertPool()
 	if err != nil {
@@ -315,10 +312,32 @@ func buildTLSTransport(
 		certPool = x509.NewCertPool()
 	}
 
-	// Add custom certificates to the pool
-	for _, certPEM := range certs {
-		// Skip invalid certificates silently
-		certPool.AppendCertsFromPEM(certPEM)
+	// Add custom certificates to the pool, validating every PEM block.
+	// We decode explicitly rather than using AppendCertsFromPEM because
+	// the latter silently skips invalid blocks when valid ones are present.
+	for i, certPEM := range certs {
+		var found bool
+		rest := certPEM
+		for {
+			var block *pem.Block
+			block, rest = pem.Decode(rest)
+			if block == nil {
+				break
+			}
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to parse TLS certificate at index %d: %w", i, err,
+				)
+			}
+			certPool.AddCert(cert)
+			found = true
+		}
+		if !found {
+			return nil, fmt.Errorf(
+				"failed to parse TLS certificate at index %d: no valid PEM blocks found", i,
+			)
+		}
 	}
 
 	// Prepare mTLS client certificates if provided
@@ -326,11 +345,9 @@ func buildTLSTransport(
 	if len(clientCertPEM) > 0 && len(clientKeyPEM) > 0 {
 		cert, err := tls.X509KeyPair(clientCertPEM, clientKeyPEM)
 		if err != nil {
-			// This should not happen as we validate in the option function
-			// But handle it defensively by skipping the client cert
-		} else {
-			clientCerts = append(clientCerts, cert)
+			return nil, fmt.Errorf("failed to load mTLS client certificate: %w", err)
 		}
+		clientCerts = append(clientCerts, cert)
 	}
 
 	// Create TLS config with custom cert pool, client certificates, and insecure skip verify
@@ -349,7 +366,7 @@ func buildTLSTransport(
 			// Clone the transport to avoid modifying the original
 			transport := httpTransport.Clone()
 			transport.TLSClientConfig = tlsConfig
-			return transport
+			return transport, nil
 		}
 		// This should never happen due to conflict detection in NewAuthClient,
 		// but handle it defensively by creating a new transport
@@ -361,5 +378,5 @@ func buildTLSTransport(
 	transport := defaultTransport.Clone()
 	transport.TLSClientConfig = tlsConfig
 
-	return transport
+	return transport, nil
 }

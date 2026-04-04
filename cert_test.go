@@ -536,19 +536,17 @@ func TestTLSCertFromURL_InvalidURL(t *testing.T) {
 
 // TestTLSCertFromBytes_Invalid tests handling of invalid certificate data
 func TestTLSCertFromBytes_Invalid(t *testing.T) {
-	// Create client with invalid certificate data
-	client, err := NewAuthClient(
+	// Create client with invalid certificate data — should return an error
+	_, err := NewAuthClient(
 		AuthModeNone,
 		"",
 		WithTLSCertFromBytes([]byte("not a valid certificate")),
 	)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
+	if err == nil {
+		t.Fatal("Expected error for invalid certificate data")
 	}
-
-	// The client should be created successfully (invalid certs are skipped)
-	if client == nil {
-		t.Fatal("Expected non-nil client")
+	if !strings.Contains(err.Error(), "no valid PEM blocks found") {
+		t.Errorf("Expected 'no valid PEM blocks found' in error, got: %v", err)
 	}
 }
 
