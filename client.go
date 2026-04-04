@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -310,11 +311,30 @@ func buildTLSTransport(
 		certPool = x509.NewCertPool()
 	}
 
-	// Add custom certificates to the pool
+	// Add custom certificates to the pool, validating every PEM block.
+	// We decode explicitly rather than using AppendCertsFromPEM because
+	// the latter silently skips invalid blocks when valid ones are present.
 	for i, certPEM := range certs {
-		if !certPool.AppendCertsFromPEM(certPEM) {
+		var found bool
+		rest := certPEM
+		for {
+			var block *pem.Block
+			block, rest = pem.Decode(rest)
+			if block == nil {
+				break
+			}
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to parse TLS certificate at index %d: %w", i, err,
+				)
+			}
+			certPool.AddCert(cert)
+			found = true
+		}
+		if !found {
 			return nil, fmt.Errorf(
-				"failed to parse TLS certificate at index %d: invalid PEM data", i,
+				"failed to parse TLS certificate at index %d: no valid PEM blocks found", i,
 			)
 		}
 	}

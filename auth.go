@@ -254,7 +254,7 @@ func (c *AuthConfig) calculateHMACSignature(
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// readBodyWithLimit reads up to maxSize bytes from r.
+// readBodyWithLimit reads up to maxSize+1 bytes from r to detect over-limit bodies.
 // Returns an error if the body exceeds maxSize or if reading fails.
 func readBodyWithLimit(r io.Reader, maxSize int64) ([]byte, error) {
 	limit := maxSize

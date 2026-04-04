@@ -545,8 +545,8 @@ func TestTLSCertFromBytes_Invalid(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error for invalid certificate data")
 	}
-	if !strings.Contains(err.Error(), "invalid PEM data") {
-		t.Errorf("Expected 'invalid PEM data' in error, got: %v", err)
+	if !strings.Contains(err.Error(), "no valid PEM blocks found") {
+		t.Errorf("Expected 'no valid PEM blocks found' in error, got: %v", err)
 	}
 }
 
