@@ -254,6 +254,23 @@ func (c *AuthConfig) calculateHMACSignature(
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// readBodyWithLimit reads up to maxSize bytes from r.
+// Returns an error if the body exceeds maxSize or if reading fails.
+func readBodyWithLimit(r io.Reader, maxSize int64) ([]byte, error) {
+	limit := maxSize
+	if limit < math.MaxInt64 {
+		limit++
+	}
+	body, err := io.ReadAll(io.LimitReader(r, limit))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read body: %w", err)
+	}
+	if int64(len(body)) > maxSize {
+		return nil, fmt.Errorf("request body too large: exceeds maximum size of %d bytes", maxSize)
+	}
+	return body, nil
+}
+
 // getFullPath returns the full request path including query parameters
 func getFullPath(req *http.Request) string {
 	path := req.URL.Path
@@ -387,19 +404,9 @@ func (c *AuthConfig) verifyHMACSignature(
 	}
 
 	// Read body with size limit to prevent DoS attacks
-	limit := options.MaxBodySize
-	if limit < math.MaxInt64 {
-		limit++
-	}
-	limitedReader := io.LimitReader(req.Body, limit)
-	body, err := io.ReadAll(limitedReader)
+	body, err := readBodyWithLimit(req.Body, options.MaxBodySize)
 	if err != nil {
-		return fmt.Errorf("failed to read body: %w", err)
-	}
-
-	// Check if body exceeded limit
-	if int64(len(body)) > options.MaxBodySize {
-		return fmt.Errorf("request body too large: exceeds %d bytes", options.MaxBodySize)
+		return err
 	}
 
 	// Restore body for subsequent handlers
@@ -465,22 +472,9 @@ func (c *AuthConfig) verifyGitHubSignature(
 	}
 
 	// Read body with size limit
-	limit := options.MaxBodySize
-	if limit < math.MaxInt64 {
-		limit++
-	}
-	body, err := io.ReadAll(io.LimitReader(req.Body, limit))
+	body, err := readBodyWithLimit(req.Body, options.MaxBodySize)
 	if err != nil {
-		return fmt.Errorf("failed to read request body: %w", err)
-	}
-
-	// Check body size
-	if int64(len(body)) > options.MaxBodySize {
-		return fmt.Errorf(
-			"request body too large: %d bytes exceeds limit of %d bytes",
-			len(body),
-			options.MaxBodySize,
-		)
+		return err
 	}
 
 	// Restore body for subsequent handlers
