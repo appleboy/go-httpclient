@@ -233,9 +233,10 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	config.TimestampHeader = options.timestampHeader
 	config.NonceHeader = options.nonceHeader
 
-	// Preserve user-provided custom signature header; otherwise keep the
-	// mode-appropriate default that NewAuthConfig already applied.
-	if options.signatureHeader != DefaultSignatureHeader {
+	// Override signature header only when the user explicitly called
+	// WithHMACHeaders; otherwise keep the mode-appropriate default
+	// that NewAuthConfig already applied (e.g. GitHub mode default).
+	if options.signatureHeaderSet {
 		config.SignatureHeader = options.signatureHeader
 	}
 

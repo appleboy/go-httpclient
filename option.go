@@ -47,6 +47,9 @@ type clientOptions struct {
 	clientCertPEM []byte // Client certificate in PEM format
 	clientKeyPEM  []byte // Client private key in PEM format
 
+	// Tracking flags
+	signatureHeaderSet bool // Whether WithHMACHeaders was explicitly called
+
 	// Error tracking
 	errors []error // Errors collected from options
 }
@@ -87,12 +90,13 @@ func defaultClientOptions() *clientOptions {
 }
 
 // validateCertSize returns an error if certPEM exceeds maxCertSize.
-// source identifies where the certificate came from (e.g. file path or URL) for the error message.
-func validateCertSize(certPEM []byte, source string) error {
+// label is a human-readable prefix describing the certificate source
+// (e.g. "certificate file /path/to/cert.pem", "certificate from https://…").
+func validateCertSize(certPEM []byte, label string) error {
 	if int64(len(certPEM)) > maxCertSize {
 		return fmt.Errorf(
-			"certificate from %s exceeds maximum size of %d bytes (got %d bytes)",
-			source, maxCertSize, len(certPEM),
+			"%s exceeds maximum size of %d bytes (got %d bytes)",
+			label, maxCertSize, len(certPEM),
 		)
 	}
 	return nil
@@ -125,6 +129,7 @@ func WithHMACHeaders(signature, timestamp, nonce string) ClientOption {
 		opts.signatureHeader = signature
 		opts.timestampHeader = timestamp
 		opts.nonceHeader = nonce
+		opts.signatureHeaderSet = true
 	}
 }
 
@@ -386,7 +391,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		}
 
 		// Check if the certificate exceeds the maximum allowed size
-		if err := validateCertSize(certPEM, url); err != nil {
+		if err := validateCertSize(certPEM, "certificate from "+url); err != nil {
 			opts.errors = append(opts.errors, err)
 			return
 		}
@@ -418,7 +423,7 @@ func WithTLSCertFromFile(path string) ClientOption {
 		}
 
 		// Check if the certificate file exceeds the maximum allowed size
-		if err := validateCertSize(certPEM, path); err != nil {
+		if err := validateCertSize(certPEM, "certificate file "+path); err != nil {
 			opts.errors = append(opts.errors, err)
 			return
 		}
@@ -444,7 +449,7 @@ func WithTLSCertFromFile(path string) ClientOption {
 func WithTLSCertFromBytes(certPEM []byte) ClientOption {
 	return func(opts *clientOptions) {
 		// Check if the certificate exceeds the maximum allowed size
-		if err := validateCertSize(certPEM, "bytes"); err != nil {
+		if err := validateCertSize(certPEM, "certificate"); err != nil {
 			opts.errors = append(opts.errors, err)
 			return
 		}

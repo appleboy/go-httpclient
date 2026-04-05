@@ -264,12 +264,22 @@ func headerOrDefault(configured, defaultName string) string {
 	return configured
 }
 
-// readAndRestoreBody reads the request body up to maxSize, then restores req.Body
-// so subsequent handlers can read it again. Returns the body bytes.
+// readAndRestoreBody reads the request body up to maxSize, closes the original
+// body to prevent resource leaks, then replaces req.Body with a new reader so
+// subsequent handlers can read it again. Returns the body bytes.
 func readAndRestoreBody(req *http.Request, maxSize int64) ([]byte, error) {
-	body, err := readBodyWithLimit(req.Body, maxSize)
+	if req.Body == nil || req.Body == http.NoBody {
+		return []byte{}, nil
+	}
+
+	originalBody := req.Body
+	body, err := readBodyWithLimit(originalBody, maxSize)
+	closeErr := originalBody.Close()
 	if err != nil {
 		return nil, err
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("failed to close request body: %w", closeErr)
 	}
 	req.Body = io.NopCloser(bytes.NewReader(body))
 	return body, nil
