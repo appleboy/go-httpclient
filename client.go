@@ -228,19 +228,15 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	}
 
 	// Create AuthConfig (internal use)
-	config := &AuthConfig{
-		Mode:            mode,
-		Secret:          NewSecureString(secret),
-		HeaderName:      options.headerName,
-		SignatureHeader: options.signatureHeader,
-		TimestampHeader: options.timestampHeader,
-		NonceHeader:     options.nonceHeader,
-	}
+	config := NewAuthConfig(mode, secret)
+	config.HeaderName = options.headerName
+	config.TimestampHeader = options.timestampHeader
+	config.NonceHeader = options.nonceHeader
 
-	// GitHub mode uses different default header
-	if mode == AuthModeGitHub &&
-		(options.signatureHeader == "" || options.signatureHeader == DefaultSignatureHeader) {
-		config.SignatureHeader = DefaultGitHubSignatureHeader
+	// Preserve user-provided custom signature header; otherwise keep the
+	// mode-appropriate default that NewAuthConfig already applied.
+	if options.signatureHeader != DefaultSignatureHeader {
+		config.SignatureHeader = options.signatureHeader
 	}
 
 	// Create authRoundTripper

@@ -86,6 +86,18 @@ func defaultClientOptions() *clientOptions {
 	}
 }
 
+// validateCertSize returns an error if certPEM exceeds maxCertSize.
+// source identifies where the certificate came from (e.g. file path or URL) for the error message.
+func validateCertSize(certPEM []byte, source string) error {
+	if int64(len(certPEM)) > maxCertSize {
+		return fmt.Errorf(
+			"certificate from %s exceeds maximum size of %d bytes (got %d bytes)",
+			source, maxCertSize, len(certPEM),
+		)
+	}
+	return nil
+}
+
 // WithHeaderName sets a custom header name for simple authentication mode.
 //
 // Default: "X-API-Secret"
@@ -374,16 +386,8 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		}
 
 		// Check if the certificate exceeds the maximum allowed size
-		if int64(len(certPEM)) > maxCertSize {
-			opts.errors = append(
-				opts.errors,
-				fmt.Errorf(
-					"certificate from %s exceeds maximum size of %d bytes (got %d bytes)",
-					url,
-					maxCertSize,
-					len(certPEM),
-				),
-			)
+		if err := validateCertSize(certPEM, url); err != nil {
+			opts.errors = append(opts.errors, err)
 			return
 		}
 
@@ -414,16 +418,8 @@ func WithTLSCertFromFile(path string) ClientOption {
 		}
 
 		// Check if the certificate file exceeds the maximum allowed size
-		if int64(len(certPEM)) > maxCertSize {
-			opts.errors = append(
-				opts.errors,
-				fmt.Errorf(
-					"certificate file %s exceeds maximum size of %d bytes (got %d bytes)",
-					path,
-					maxCertSize,
-					len(certPEM),
-				),
-			)
+		if err := validateCertSize(certPEM, path); err != nil {
+			opts.errors = append(opts.errors, err)
 			return
 		}
 
@@ -448,15 +444,8 @@ func WithTLSCertFromFile(path string) ClientOption {
 func WithTLSCertFromBytes(certPEM []byte) ClientOption {
 	return func(opts *clientOptions) {
 		// Check if the certificate exceeds the maximum allowed size
-		if int64(len(certPEM)) > maxCertSize {
-			opts.errors = append(
-				opts.errors,
-				fmt.Errorf(
-					"certificate exceeds maximum size of %d bytes (got %d bytes)",
-					maxCertSize,
-					len(certPEM),
-				),
-			)
+		if err := validateCertSize(certPEM, "bytes"); err != nil {
+			opts.errors = append(opts.errors, err)
 			return
 		}
 
