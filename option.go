@@ -48,7 +48,7 @@ type clientOptions struct {
 	clientKeyPEM  []byte // Client private key in PEM format
 
 	// Tracking flags
-	signatureHeaderSet bool // Whether WithHMACHeaders was explicitly called
+	signatureHeaderOverride bool // Whether a custom (non-default) signature header was provided
 
 	// Error tracking
 	errors []error // Errors collected from options
@@ -129,7 +129,7 @@ func WithHMACHeaders(signature, timestamp, nonce string) ClientOption {
 		opts.signatureHeader = signature
 		opts.timestampHeader = timestamp
 		opts.nonceHeader = nonce
-		opts.signatureHeaderSet = signature != "" && signature != DefaultSignatureHeader
+		opts.signatureHeaderOverride = signature != "" && signature != DefaultSignatureHeader
 	}
 }
 

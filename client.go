@@ -236,7 +236,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	// Override signature header only when the user explicitly called
 	// WithHMACHeaders; otherwise keep the mode-appropriate default
 	// that NewAuthConfig already applied (e.g. GitHub mode default).
-	if options.signatureHeaderSet {
+	if options.signatureHeaderOverride {
 		config.SignatureHeader = options.signatureHeader
 	}
 
