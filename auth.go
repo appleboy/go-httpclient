@@ -274,12 +274,9 @@ func readAndRestoreBody(req *http.Request, maxSize int64) ([]byte, error) {
 
 	originalBody := req.Body
 	body, err := readBodyWithLimit(originalBody, maxSize)
-	closeErr := originalBody.Close()
+	_ = originalBody.Close()
 	if err != nil {
 		return nil, err
-	}
-	if closeErr != nil {
-		return nil, fmt.Errorf("failed to close request body: %w", closeErr)
 	}
 	req.Body = io.NopCloser(bytes.NewReader(body))
 	return body, nil

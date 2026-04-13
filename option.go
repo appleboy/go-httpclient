@@ -129,7 +129,7 @@ func WithHMACHeaders(signature, timestamp, nonce string) ClientOption {
 		opts.signatureHeader = signature
 		opts.timestampHeader = timestamp
 		opts.nonceHeader = nonce
-		opts.signatureHeaderSet = true
+		opts.signatureHeaderSet = signature != "" && signature != DefaultSignatureHeader
 	}
 }
 

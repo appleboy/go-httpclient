@@ -1046,3 +1046,97 @@ func TestWithRequestID_NoFunction(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 }
+
+// TestGitHubMode_WithHMACHeaders_DefaultSignature tests that calling
+// WithHMACHeaders with the default signature header does NOT override
+// the GitHub-mode default (X-Hub-Signature-256).
+func TestGitHubMode_WithHMACHeaders_DefaultSignature(t *testing.T) {
+	secret := testSharedSecret
+
+	// Create test server that captures the signature header used
+	var receivedGitHubSig string
+	var receivedDefaultSig string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedGitHubSig = r.Header.Get(DefaultGitHubSignatureHeader)
+		receivedDefaultSig = r.Header.Get(DefaultSignatureHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// GitHub mode + WithHMACHeaders using the default signature header
+	// should still use X-Hub-Signature-256, not X-Signature
+	client, err := NewAuthClient(
+		AuthModeGitHub,
+		secret,
+		WithHMACHeaders(DefaultSignatureHeader, "X-Time", "X-Nonce"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	req, _ := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		server.URL,
+		strings.NewReader("test body"),
+	)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if receivedGitHubSig == "" {
+		t.Error("Expected X-Hub-Signature-256 header to be set in GitHub mode")
+	}
+	if receivedDefaultSig != "" {
+		t.Error("X-Signature header should not be set when GitHub mode uses its default")
+	}
+}
+
+// TestGitHubMode_WithHMACHeaders_CustomSignature tests that calling
+// WithHMACHeaders with a custom (non-default) signature header
+// overrides the GitHub-mode default.
+func TestGitHubMode_WithHMACHeaders_CustomSignature(t *testing.T) {
+	secret := testSharedSecret
+	customHeader := "X-My-Custom-Signature"
+
+	var receivedCustomSig string
+	var receivedGitHubSig string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedCustomSig = r.Header.Get(customHeader)
+		receivedGitHubSig = r.Header.Get(DefaultGitHubSignatureHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// GitHub mode + WithHMACHeaders using a custom signature header
+	// should use the custom header
+	client, err := NewAuthClient(
+		AuthModeGitHub,
+		secret,
+		WithHMACHeaders(customHeader, "X-Time", "X-Nonce"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	req, _ := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		server.URL,
+		strings.NewReader("test body"),
+	)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if receivedCustomSig == "" {
+		t.Errorf("Expected %s header to be set", customHeader)
+	}
+	if receivedGitHubSig != "" {
+		t.Error("X-Hub-Signature-256 should not be set when custom header overrides it")
+	}
+}
