@@ -164,12 +164,7 @@ func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
 		return fmt.Errorf("secret is required for simple authentication")
 	}
 
-	headerName := c.HeaderName
-	if headerName == "" {
-		headerName = DefaultAPISecretHeader
-	}
-
-	req.Header.Set(headerName, string(c.Secret.Bytes()))
+	req.Header.Set(headerOrDefault(c.HeaderName, DefaultAPISecretHeader), string(c.Secret.Bytes()))
 	return nil
 }
 
@@ -192,24 +187,12 @@ func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
 	)
 
 	// Set headers
-	signatureHeader := c.SignatureHeader
-	if signatureHeader == "" {
-		signatureHeader = DefaultSignatureHeader
-	}
-
-	timestampHeader := c.TimestampHeader
-	if timestampHeader == "" {
-		timestampHeader = DefaultTimestampHeader
-	}
-
-	nonceHeader := c.NonceHeader
-	if nonceHeader == "" {
-		nonceHeader = DefaultNonceHeader
-	}
-
-	req.Header.Set(signatureHeader, signature)
-	req.Header.Set(timestampHeader, strconv.FormatInt(timestamp, 10))
-	req.Header.Set(nonceHeader, nonce)
+	req.Header.Set(headerOrDefault(c.SignatureHeader, DefaultSignatureHeader), signature)
+	req.Header.Set(
+		headerOrDefault(c.TimestampHeader, DefaultTimestampHeader),
+		strconv.FormatInt(timestamp, 10),
+	)
+	req.Header.Set(headerOrDefault(c.NonceHeader, DefaultNonceHeader), nonce)
 
 	return nil
 }
@@ -221,19 +204,21 @@ func (c *AuthConfig) addGitHubAuth(req *http.Request, body []byte) error {
 		return fmt.Errorf("secret is required for GitHub mode authentication")
 	}
 
-	// Calculate signature: HMAC-SHA256(secret, body)
-	h := hmac.New(sha256.New, c.Secret.Bytes())
-	h.Write(body)
-	signature := "sha256=" + hex.EncodeToString(h.Sum(nil))
-
 	// Set single header
-	signatureHeader := c.SignatureHeader
-	if signatureHeader == "" {
-		signatureHeader = DefaultGitHubSignatureHeader
-	}
-	req.Header.Set(signatureHeader, signature)
+	req.Header.Set(
+		headerOrDefault(c.SignatureHeader, DefaultGitHubSignatureHeader),
+		c.calculateGitHubSignature(body),
+	)
 
 	return nil
+}
+
+// calculateGitHubSignature calculates a GitHub-style HMAC-SHA256 signature.
+// Returns "sha256=" + hex(HMAC-SHA256(secret, body)).
+func (c *AuthConfig) calculateGitHubSignature(body []byte) string {
+	h := hmac.New(sha256.New, c.Secret.Bytes())
+	_, _ = h.Write(body)
+	return "sha256=" + hex.EncodeToString(h.Sum(nil))
 }
 
 // calculateHMACSignature calculates HMAC-SHA256 signature
@@ -268,6 +253,32 @@ func readBodyWithLimit(r io.Reader, maxSize int64) ([]byte, error) {
 	if int64(len(body)) > maxSize {
 		return nil, fmt.Errorf("request body too large: exceeds maximum size of %d bytes", maxSize)
 	}
+	return body, nil
+}
+
+// headerOrDefault returns the configured header name if non-empty, otherwise the default.
+func headerOrDefault(configured, defaultName string) string {
+	if configured == "" {
+		return defaultName
+	}
+	return configured
+}
+
+// readAndRestoreBody reads the request body up to maxSize, closes the original
+// body to prevent resource leaks, then replaces req.Body with a new reader so
+// subsequent handlers can read it again. Returns the body bytes.
+func readAndRestoreBody(req *http.Request, maxSize int64) ([]byte, error) {
+	if req.Body == nil || req.Body == http.NoBody {
+		return []byte{}, nil
+	}
+
+	originalBody := req.Body
+	body, err := readBodyWithLimit(originalBody, maxSize)
+	_ = originalBody.Close()
+	if err != nil {
+		return nil, err
+	}
+	req.Body = io.NopCloser(bytes.NewReader(body))
 	return body, nil
 }
 
@@ -330,10 +341,7 @@ func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 		return fmt.Errorf("secret is required for simple authentication verification")
 	}
 
-	headerName := c.HeaderName
-	if headerName == "" {
-		headerName = DefaultAPISecretHeader
-	}
+	headerName := headerOrDefault(c.HeaderName, DefaultAPISecretHeader)
 
 	secret := req.Header.Get(headerName)
 	if secret == "" {
@@ -366,18 +374,8 @@ func (c *AuthConfig) verifyHMACSignature(
 	}
 
 	// Get headers
-	signatureHeader := c.SignatureHeader
-	if signatureHeader == "" {
-		signatureHeader = DefaultSignatureHeader
-	}
-
-	timestampHeader := c.TimestampHeader
-	if timestampHeader == "" {
-		timestampHeader = DefaultTimestampHeader
-	}
-
-	signature := req.Header.Get(signatureHeader)
-	timestampStr := req.Header.Get(timestampHeader)
+	signature := req.Header.Get(headerOrDefault(c.SignatureHeader, DefaultSignatureHeader))
+	timestampStr := req.Header.Get(headerOrDefault(c.TimestampHeader, DefaultTimestampHeader))
 
 	if signature == "" || timestampStr == "" {
 		return fmt.Errorf("missing authentication headers")
@@ -403,14 +401,11 @@ func (c *AuthConfig) verifyHMACSignature(
 		return fmt.Errorf("request timestamp is too far in the future")
 	}
 
-	// Read body with size limit to prevent DoS attacks
-	body, err := readBodyWithLimit(req.Body, options.MaxBodySize)
+	// Read body with size limit and restore for subsequent handlers
+	body, err := readAndRestoreBody(req, options.MaxBodySize)
 	if err != nil {
 		return err
 	}
-
-	// Restore body for subsequent handlers
-	req.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Calculate expected signature (including query parameters)
 	expectedSignature := c.calculateHMACSignature(
@@ -454,10 +449,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	}
 
 	// Get signature header
-	signatureHeader := c.SignatureHeader
-	if signatureHeader == "" {
-		signatureHeader = DefaultGitHubSignatureHeader
-	}
+	signatureHeader := headerOrDefault(c.SignatureHeader, DefaultGitHubSignatureHeader)
 	signature := req.Header.Get(signatureHeader)
 	if signature == "" {
 		return fmt.Errorf("missing %s header", signatureHeader)
@@ -471,22 +463,14 @@ func (c *AuthConfig) verifyGitHubSignature(
 		)
 	}
 
-	// Read body with size limit
-	body, err := readBodyWithLimit(req.Body, options.MaxBodySize)
+	// Read body with size limit and restore for subsequent handlers
+	body, err := readAndRestoreBody(req, options.MaxBodySize)
 	if err != nil {
 		return err
 	}
 
-	// Restore body for subsequent handlers
-	req.Body = io.NopCloser(bytes.NewReader(body))
-
-	// Calculate expected signature
-	h := hmac.New(sha256.New, c.Secret.Bytes())
-	h.Write(body)
-	expectedSignature := "sha256=" + hex.EncodeToString(h.Sum(nil))
-
 	// Constant-time comparison to prevent timing attacks
-	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+	if !hmac.Equal([]byte(signature), []byte(c.calculateGitHubSignature(body))) {
 		return fmt.Errorf("signature verification failed")
 	}
 
