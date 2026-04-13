@@ -217,7 +217,7 @@ func (c *AuthConfig) addGitHubAuth(req *http.Request, body []byte) error {
 // Returns "sha256=" + hex(HMAC-SHA256(secret, body)).
 func (c *AuthConfig) calculateGitHubSignature(body []byte) string {
 	h := hmac.New(sha256.New, c.Secret.Bytes())
-	h.Write(body)
+	_, _ = h.Write(body)
 	return "sha256=" + hex.EncodeToString(h.Sum(nil))
 }
 
