@@ -48,7 +48,7 @@ type clientOptions struct {
 	clientKeyPEM  []byte // Client private key in PEM format
 
 	// Tracking flags
-	signatureHeaderOverride bool // Whether signature header differs from DefaultSignatureHeader (HMAC default)
+	signatureHeaderOverride bool // True when signature is non-empty and != DefaultSignatureHeader
 
 	// Error tracking
 	errors []error // Errors collected from options
