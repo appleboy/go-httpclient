@@ -64,7 +64,7 @@ Run examples: `go run _example/<example-name>/main.go`
 
 ## CI Requirements
 
-- Go 1.24 minimum version, CI tests 1.24 and 1.25
+- Go 1.25.9 minimum version, CI tests 1.25 and 1.26
 - All tests must pass on both Ubuntu and macOS
 - Test coverage must be >80% (currently ~90%)
 - All PRs must pass golangci-lint with zero warnings
