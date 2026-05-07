@@ -66,7 +66,7 @@ func TestSecureString_PreventLeakage(t *testing.T) {
 // TestSecureString_AuthConfigLeakage tests that AuthConfig with SecureString
 // does not leak secrets when printed.
 func TestSecureString_AuthConfigLeakage(t *testing.T) {
-	secret := "my-api-secret-key-456" //nolint:gosec // test data
+	secret := "my-api-secret-key-456"
 	config := NewAuthConfig(AuthModeSimple, secret)
 
 	tests := []struct {

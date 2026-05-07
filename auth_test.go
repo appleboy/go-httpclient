@@ -1117,7 +1117,7 @@ func TestAuthConfig_VerifyGitHubSignature_InvalidSignature(t *testing.T) {
 
 // TestAuthConfig_VerifyGitHubSignature_MissingHeader tests rejection when signature header is missing.
 func TestAuthConfig_VerifyGitHubSignature_MissingHeader(t *testing.T) {
-	body := `{"test":"data"}` //nolint:goconst // test data
+	body := `{"test":"data"}`
 	req, err := http.NewRequestWithContext(
 		context.Background(),
 		"POST",
