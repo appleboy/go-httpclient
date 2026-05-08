@@ -1,6 +1,6 @@
 module example
 
-go 1.25
+go 1.25.10
 
 require github.com/appleboy/go-httpclient v0.4.0
 
