@@ -19,11 +19,14 @@ func main() {
 
 func simpleAuthExample() {
 	// Create HTTP client with custom header name for simple authentication
-	client := httpclient.NewAuthClient(
+	client, err := httpclient.NewAuthClient(
 		httpclient.AuthModeSimple,
 		"my-api-key",
 		httpclient.WithHeaderName("Authorization"), // Custom header name
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Create request
 	req, err := http.NewRequest(
@@ -54,7 +57,7 @@ func simpleAuthExample() {
 
 func hmacAuthExample() {
 	// Create HTTP client with custom HMAC header names
-	client := httpclient.NewAuthClient(
+	client, err := httpclient.NewAuthClient(
 		httpclient.AuthModeHMAC,
 		"shared-secret",
 		httpclient.WithHMACHeaders(
@@ -63,6 +66,9 @@ func hmacAuthExample() {
 			"X-Request-ID",        // Custom nonce header
 		),
 	)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
 
 	// Create request
 	reqBody := []byte(`{"data": "example"}`)
