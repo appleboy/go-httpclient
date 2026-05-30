@@ -3,7 +3,6 @@ package httpclient
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,11 +46,13 @@ type clientOptions struct {
 	clientCertPEM []byte // Client certificate in PEM format
 	clientKeyPEM  []byte // Client private key in PEM format
 
-	// Tracking flags
-	signatureHeaderOverride bool // True when signature is non-empty and != DefaultSignatureHeader
-
 	// Error tracking
 	errors []error // Errors collected from options
+}
+
+// addError records an error encountered while applying an option.
+func (o *clientOptions) addError(err error) {
+	o.errors = append(o.errors, err)
 }
 
 // hasTLSOptions returns true if any TLS-related options are configured.
@@ -129,7 +130,6 @@ func WithHMACHeaders(signature, timestamp, nonce string) ClientOption {
 		opts.signatureHeader = signature
 		opts.timestampHeader = timestamp
 		opts.nonceHeader = nonce
-		opts.signatureHeaderOverride = signature != "" && signature != DefaultSignatureHeader
 	}
 }
 
@@ -325,11 +325,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 	return func(opts *clientOptions) {
 		// Create a secure HTTP client using system certificate pool
 		// to verify the certificate server's identity (prevents MITM)
-		systemCerts, err := x509.SystemCertPool()
-		if err != nil || systemCerts == nil {
-			// Fallback to empty pool if system pool is unavailable
-			systemCerts = x509.NewCertPool()
-		}
+		systemCerts := getOrCreateCertPool()
 
 		tlsConfig := &tls.Config{
 			RootCAs:    systemCerts,
@@ -352,8 +348,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 			nil,
 		)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to create request for TLS cert from %s: %w", url, err),
 			)
 			return
@@ -362,8 +357,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		// #nosec G107 - URL is provided by the user, not external input
 		resp, err := secureClient.Do(req)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to download TLS cert from %s: %w", url, err),
 			)
 			return
@@ -371,8 +365,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to download TLS cert from %s: HTTP %d", url, resp.StatusCode),
 			)
 			return
@@ -383,8 +376,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 		limitedReader := io.LimitReader(resp.Body, maxCertSize+1)
 		certPEM, err := io.ReadAll(limitedReader)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to read TLS cert from %s: %w", url, err),
 			)
 			return
@@ -392,7 +384,7 @@ func WithTLSCertFromURL(ctx context.Context, url string) ClientOption {
 
 		// Check if the certificate exceeds the maximum allowed size
 		if err := validateCertSize(certPEM, "certificate from "+url); err != nil {
-			opts.errors = append(opts.errors, err)
+			opts.addError(err)
 			return
 		}
 
@@ -415,8 +407,7 @@ func WithTLSCertFromFile(path string) ClientOption {
 	return func(opts *clientOptions) {
 		certPEM, err := os.ReadFile(path)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to read TLS cert from %s: %w", path, err),
 			)
 			return
@@ -424,7 +415,7 @@ func WithTLSCertFromFile(path string) ClientOption {
 
 		// Check if the certificate file exceeds the maximum allowed size
 		if err := validateCertSize(certPEM, "certificate file "+path); err != nil {
-			opts.errors = append(opts.errors, err)
+			opts.addError(err)
 			return
 		}
 
@@ -450,7 +441,7 @@ func WithTLSCertFromBytes(certPEM []byte) ClientOption {
 	return func(opts *clientOptions) {
 		// Check if the certificate exceeds the maximum allowed size
 		if err := validateCertSize(certPEM, "certificate"); err != nil {
-			opts.errors = append(opts.errors, err)
+			opts.addError(err)
 			return
 		}
 
@@ -475,8 +466,7 @@ func WithMTLSFromFile(certPath, keyPath string) ClientOption {
 	return func(opts *clientOptions) {
 		certPEM, err := os.ReadFile(certPath)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to read mTLS cert from %s: %w", certPath, err),
 			)
 			return
@@ -484,8 +474,7 @@ func WithMTLSFromFile(certPath, keyPath string) ClientOption {
 
 		keyPEM, err := os.ReadFile(keyPath)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf("failed to read mTLS key from %s: %w", keyPath, err),
 			)
 			return
@@ -494,8 +483,7 @@ func WithMTLSFromFile(certPath, keyPath string) ClientOption {
 		// Validate that the cert and key pair is valid
 		_, err = tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
-			opts.errors = append(
-				opts.errors,
+			opts.addError(
 				fmt.Errorf(
 					"invalid mTLS cert/key pair from files %s and %s: %w",
 					certPath,
@@ -531,7 +519,7 @@ func WithMTLSFromBytes(certPEM, keyPEM []byte) ClientOption {
 		// Validate that the cert and key pair is valid
 		_, err := tls.X509KeyPair(certPEM, keyPEM)
 		if err != nil {
-			opts.errors = append(opts.errors, fmt.Errorf("invalid mTLS cert/key pair: %w", err))
+			opts.addError(fmt.Errorf("invalid mTLS cert/key pair: %w", err))
 			return
 		}
 
