@@ -100,6 +100,15 @@ func defaultVerifyOptions() *VerifyOptions {
 	}
 }
 
+// applyVerifyOptions builds a VerifyOptions from the defaults and applies opts.
+func applyVerifyOptions(opts ...VerifyOption) *VerifyOptions {
+	options := defaultVerifyOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
+}
+
 // WithVerifyMaxAge sets the maximum age for request timestamps during verification
 func WithVerifyMaxAge(d time.Duration) VerifyOption {
 	return func(o *VerifyOptions) {
@@ -241,7 +250,16 @@ func (c *AuthConfig) calculateHMACSignature(
 
 // readBodyWithLimit reads up to maxSize+1 bytes from r to detect over-limit bodies.
 // Returns an error if the body exceeds maxSize or if reading fails.
+// A non-positive maxSize disables the limit and reads the entire body.
 func readBodyWithLimit(r io.Reader, maxSize int64) ([]byte, error) {
+	if maxSize <= 0 {
+		body, err := io.ReadAll(r)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read body: %w", err)
+		}
+		return body, nil
+	}
+
 	limit := maxSize
 	if limit < math.MaxInt64 {
 		limit++
@@ -368,10 +386,7 @@ func (c *AuthConfig) verifyHMACSignature(
 	}
 
 	// Apply options
-	options := defaultVerifyOptions()
-	for _, opt := range opts {
-		opt(options)
-	}
+	options := applyVerifyOptions(opts...)
 
 	// Get headers
 	signature := req.Header.Get(headerOrDefault(c.SignatureHeader, DefaultSignatureHeader))
@@ -443,10 +458,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	}
 
 	// Apply verification options (primarily for MaxBodySize)
-	options := defaultVerifyOptions()
-	for _, opt := range opts {
-		opt(options)
-	}
+	options := applyVerifyOptions(opts...)
 
 	// Get signature header
 	signatureHeader := headerOrDefault(c.SignatureHeader, DefaultGitHubSignatureHeader)

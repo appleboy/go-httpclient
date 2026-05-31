@@ -1,13 +1,11 @@
 package httpclient
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 )
 
@@ -64,31 +62,12 @@ func (t *authRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		return transport.RoundTrip(req)
 	}
 
-	// Handle nil or empty body (GET, DELETE, etc.)
-	var bodyBytes []byte
-	if req.Body != nil && req.Body != http.NoBody {
-		// Close original body on all paths to prevent resource leaks
-		originalBody := req.Body
-		defer originalBody.Close()
-
-		if t.maxBodySize > 0 {
-			// Read with size limit
-			var err error
-			bodyBytes, err = readBodyWithLimit(originalBody, t.maxBodySize)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read request body: %w", err)
-			}
-		} else {
-			// No size limit
-			var err error
-			bodyBytes, err = io.ReadAll(originalBody)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read request body: %w", err)
-			}
-		}
-
-		// Restore body for downstream transport
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	// Read the body (respecting the configured size limit; maxBodySize <= 0
+	// disables the limit) and restore it for the downstream transport. A nil or
+	// empty body yields an empty slice, which the auth modes handle correctly.
+	bodyBytes, err := readAndRestoreBody(req, t.maxBodySize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	// Add authentication headers using existing logic
@@ -209,10 +188,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	if minTLSVersion == 0 {
 		minTLSVersion = defaultTLSMinVersion
 	}
-	if len(options.tlsCerts) > 0 ||
-		(len(options.clientCertPEM) > 0 && len(options.clientKeyPEM) > 0) ||
-		options.minTLSVersion != 0 ||
-		options.insecureSkipVerify {
+	if options.hasTLSOptions() {
 		var err error
 		transport, err = buildTLSTransport(
 			options.transport,
@@ -236,7 +212,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 	// Override signature header only when a custom (non-default) header
 	// was provided via WithHMACHeaders; otherwise keep the mode-appropriate
 	// default that NewAuthConfig already applied (e.g. GitHub mode default).
-	if options.signatureHeaderOverride {
+	if options.signatureHeader != "" && options.signatureHeader != DefaultSignatureHeader {
 		config.SignatureHeader = options.signatureHeader
 	}
 
@@ -290,6 +266,16 @@ func NewClient(opts ...ClientOption) (*http.Client, error) {
 	return NewAuthClient(AuthModeNone, "", opts...)
 }
 
+// getOrCreateCertPool returns the system certificate pool, falling back to a new
+// empty pool when the system pool is unavailable.
+func getOrCreateCertPool() *x509.CertPool {
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		return x509.NewCertPool()
+	}
+	return pool
+}
+
 // buildTLSTransport creates or modifies an HTTP transport with custom TLS certificates,
 // optional mTLS client certificates, configurable minimum TLS version, and/or insecure skip verify.
 //
@@ -303,11 +289,7 @@ func buildTLSTransport(
 	insecureSkipVerify bool,
 ) (http.RoundTripper, error) {
 	// Start with system cert pool
-	certPool, err := x509.SystemCertPool()
-	if err != nil {
-		// If system pool is unavailable, create a new empty pool
-		certPool = x509.NewCertPool()
-	}
+	certPool := getOrCreateCertPool()
 
 	// Add custom certificates to the pool, validating every PEM block.
 	// We decode explicitly rather than using AppendCertsFromPEM because
