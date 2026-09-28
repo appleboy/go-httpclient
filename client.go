@@ -168,7 +168,7 @@ func NewAuthClient(mode, secret string, opts ...ClientOption) (*http.Client, err
 
 	// Detect conflicts between TLS options and non-Transport RoundTrippers
 	if options.hasTLSOptions() && options.isNonTransportRoundTripper() {
-		return nil, fmt.Errorf(
+		return nil, errors.New(
 			"TLS options (WithTLSCert*, WithMTLS*, WithInsecureSkipVerify) cannot be combined " +
 				"with non-Transport RoundTrippers provided via WithTransport(). " +
 				"Please configure TLS settings in your custom *http.Transport instead. " +

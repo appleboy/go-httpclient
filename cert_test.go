@@ -586,7 +586,7 @@ func TestTLSCertFromURL_OversizedCertificate(t *testing.T) {
 // TestTLSCertFromFile_OversizedCertificate tests file size protection
 func TestTLSCertFromFile_OversizedCertificate(t *testing.T) {
 	// Create a temporary oversized certificate file
-	tmpFile, err := os.CreateTemp("", "oversized-cert-*.pem")
+	tmpFile, err := os.CreateTemp(t.TempDir(), "oversized-cert-*.pem")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
@@ -658,7 +658,7 @@ func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
 	}
 
 	// Track active connections on the cert-serving server
-	var activeConns int32
+	var activeConns atomic.Int32
 	connStateCh := make(chan struct{}, 10)
 
 	certServer := httptest.NewUnstartedServer(
@@ -671,9 +671,9 @@ func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
 		//exhaustive:enforce
 		switch state {
 		case http.StateNew:
-			atomic.AddInt32(&activeConns, 1)
+			activeConns.Add(1)
 		case http.StateClosed:
-			atomic.AddInt32(&activeConns, -1)
+			activeConns.Add(-1)
 			select {
 			case connStateCh <- struct{}{}:
 			default:
@@ -701,7 +701,7 @@ func TestWithTLSCertFromURL_ConnectionCleanup(t *testing.T) {
 	// Wait for connections to close (with timeout)
 	deadline := time.After(5 * time.Second)
 	for {
-		conns := atomic.LoadInt32(&activeConns)
+		conns := activeConns.Load()
 		if conns <= 0 {
 			break
 		}
