@@ -33,7 +33,7 @@ func TestAuthConfig_addAuthHeaders_None(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleURL,
 		bytes.NewBufferString("test body"),
 	)
@@ -98,7 +98,7 @@ func TestAuthConfig_addAuthHeaders_Simple(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := http.NewRequestWithContext(
 				context.Background(),
-				"POST",
+				http.MethodPost,
 				testExampleURL,
 				bytes.NewBufferString("test body"),
 			)
@@ -131,7 +131,7 @@ func TestAuthConfig_addAuthHeaders_HMAC(t *testing.T) {
 	body := []byte(`{"username":"test","password":"pass123"}`)
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleAuthURL,
 		bytes.NewBuffer(body),
 	)
@@ -189,7 +189,7 @@ func TestAuthConfig_addAuthHeaders_HMAC_CustomHeaders(t *testing.T) {
 	body := []byte("test body")
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleURL,
 		bytes.NewBuffer(body),
 	)
@@ -256,7 +256,7 @@ func TestAuthConfig_VerifyHMACSignature(t *testing.T) {
 	// Create a request with valid signature
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleAuthURL,
 		bytes.NewBuffer(body),
 	)
@@ -285,7 +285,7 @@ func TestAuthConfig_VerifyHMACSignature_InvalidSignature(t *testing.T) {
 	// Create a request with invalid signature
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleAuthURL,
 		bytes.NewBuffer(body),
 	)
@@ -315,7 +315,7 @@ func TestAuthConfig_VerifyHMACSignature_ExpiredTimestamp(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleAuthURL,
 		bytes.NewBuffer(body),
 	)
@@ -349,7 +349,7 @@ func TestAuthConfig_VerifyHMACSignature_MissingHeaders(t *testing.T) {
 			setupReq: func() *http.Request {
 				req, _ := http.NewRequestWithContext(
 					context.Background(),
-					"POST",
+					http.MethodPost,
 					testExampleURL,
 					bytes.NewBufferString("test"),
 				)
@@ -363,7 +363,7 @@ func TestAuthConfig_VerifyHMACSignature_MissingHeaders(t *testing.T) {
 			setupReq: func() *http.Request {
 				req, _ := http.NewRequestWithContext(
 					context.Background(),
-					"POST",
+					http.MethodPost,
 					testExampleURL,
 					bytes.NewBufferString("test"),
 				)
@@ -378,7 +378,7 @@ func TestAuthConfig_VerifyHMACSignature_MissingHeaders(t *testing.T) {
 				body := []byte("test")
 				req, _ := http.NewRequestWithContext(
 					context.Background(),
-					"POST",
+					http.MethodPost,
 					testExampleURL,
 					bytes.NewBuffer(body),
 				)
@@ -453,7 +453,7 @@ func TestAuthConfig_VerifyHMACSignature_BodyPreservation(t *testing.T) {
 	// Create a request with valid signature
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleAuthURL,
 		bytes.NewBuffer(originalBody),
 	)
@@ -510,7 +510,7 @@ func TestAuthConfig_VerifyHMACSignature_FutureTimestamp(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		testExampleAuthURL,
 		bytes.NewBuffer(body),
 	)
@@ -552,7 +552,7 @@ func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 	originalURL := "http://example.com/api/users?id=123&action=view"
 	req1, _ := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		originalURL,
 		bytes.NewBuffer(body),
 	)
@@ -577,7 +577,7 @@ func TestAuthConfig_VerifyHMACSignature_QueryParameterSecurity(t *testing.T) {
 	maliciousURL := "http://example.com/api/users?id=999&action=delete&admin=true"
 	req2, _ := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		maliciousURL,
 		bytes.NewBuffer(body),
 	)
@@ -623,7 +623,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_WithinLimit(t *testing.T) 
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(body),
 	)
@@ -656,7 +656,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExceedsLimit(t *testing.T)
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(body),
 	)
@@ -697,7 +697,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_ExactLimit(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(body),
 	)
@@ -731,7 +731,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T)
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(body),
 	)
@@ -754,7 +754,7 @@ func TestAuthConfig_VerifyHMACSignature_BodySizeLimit_DefaultLimit(t *testing.T)
 
 	req2, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(largeBody),
 	)
@@ -785,7 +785,7 @@ func TestAuthConfig_VerifyHMACSignature_MultipleOptions(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(body),
 	)
@@ -871,7 +871,7 @@ func TestAuthConfig_VerifySimpleAuth(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := http.NewRequestWithContext(
 				context.Background(),
-				"GET",
+				http.MethodGet,
 				testExampleURL,
 				nil,
 			)
@@ -999,7 +999,7 @@ func TestAuthConfig_Verify(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := http.NewRequestWithContext(
 				context.Background(),
-				"POST",
+				http.MethodPost,
 				testExampleURL,
 				nil,
 			)
@@ -1037,7 +1037,7 @@ func TestAuthConfig_Verify_WithOptions(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"http://example.com/api/data",
 		bytes.NewBuffer(body),
 	)
@@ -1066,7 +1066,7 @@ func TestAuthConfig_VerifyGitHubSignature_Success(t *testing.T) {
 	// Create request
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1095,7 +1095,7 @@ func TestAuthConfig_VerifyGitHubSignature_InvalidSignature(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1120,7 +1120,7 @@ func TestAuthConfig_VerifyGitHubSignature_MissingHeader(t *testing.T) {
 	body := `{"test":"data"}`
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1147,7 +1147,7 @@ func TestAuthConfig_VerifyGitHubSignature_MalformedSignature(t *testing.T) {
 	body := `{"test":"data"}`
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1174,7 +1174,7 @@ func TestAuthConfig_VerifyGitHubSignature_BodyPreservation(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1212,7 +1212,7 @@ func TestAuthConfig_VerifyGitHubSignature_EmptyBody(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1239,7 +1239,7 @@ func TestAuthConfig_VerifyGitHubSignature_BodyTooLarge(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1266,7 +1266,7 @@ func TestAuthConfig_VerifyGitHubSignature_CustomBodyLimit(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1295,7 +1295,7 @@ func TestAuthConfig_VerifyGitHubSignature_EmptySecret(t *testing.T) {
 	body := `{"test":"data"}`
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(body),
 	)
@@ -1322,7 +1322,7 @@ func TestAuthConfig_AddGitHubAuth_Success(t *testing.T) {
 
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		bytes.NewReader(body),
 	)
@@ -1359,7 +1359,7 @@ func TestAuthConfig_AddGitHubAuth_EmptySecret(t *testing.T) {
 	body := []byte(`{"test":"data"}`)
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		bytes.NewReader(body),
 	)
@@ -1474,7 +1474,7 @@ func TestAuthConfig_GitHubMode_PythonCompatibility(t *testing.T) {
 	// Create request
 	req, err := http.NewRequestWithContext(
 		context.Background(),
-		"POST",
+		http.MethodPost,
 		"/webhook",
 		strings.NewReader(payload),
 	)
@@ -1605,7 +1605,7 @@ func TestCalculateHMACSignature_EndToEnd_WithVerify(t *testing.T) {
 
 		req, err := http.NewRequestWithContext(
 			context.Background(),
-			"POST",
+			http.MethodPost,
 			"http://example.com/api/test",
 			bytes.NewReader(reqBody),
 		)

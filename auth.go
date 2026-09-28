@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -170,7 +171,7 @@ func (c *AuthConfig) addAuthHeaders(req *http.Request, body []byte) error {
 // addSimpleAuth adds simple API secret header
 func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
 	if c.Secret.IsEmpty() {
-		return fmt.Errorf("secret is required for simple authentication")
+		return errors.New("secret is required for simple authentication")
 	}
 
 	req.Header.Set(headerOrDefault(c.HeaderName, DefaultAPISecretHeader), string(c.Secret.Bytes()))
@@ -180,7 +181,7 @@ func (c *AuthConfig) addSimpleAuth(req *http.Request) error {
 // addHMACAuth adds HMAC signature headers
 func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
 	if c.Secret.IsEmpty() {
-		return fmt.Errorf("secret is required for HMAC authentication")
+		return errors.New("secret is required for HMAC authentication")
 	}
 
 	// Generate timestamp and nonce
@@ -210,7 +211,7 @@ func (c *AuthConfig) addHMACAuth(req *http.Request, body []byte) error {
 // GitHub signature format: "sha256=" + HMAC-SHA256(secret, body)
 func (c *AuthConfig) addGitHubAuth(req *http.Request, body []byte) error {
 	if c.Secret.IsEmpty() {
-		return fmt.Errorf("secret is required for GitHub mode authentication")
+		return errors.New("secret is required for GitHub mode authentication")
 	}
 
 	// Set single header
@@ -356,7 +357,7 @@ func (c *AuthConfig) Verify(req *http.Request, opts ...VerifyOption) error {
 // This is an internal method. External users should use Verify() instead.
 func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 	if c.Secret.IsEmpty() {
-		return fmt.Errorf("secret is required for simple authentication verification")
+		return errors.New("secret is required for simple authentication verification")
 	}
 
 	headerName := headerOrDefault(c.HeaderName, DefaultAPISecretHeader)
@@ -368,7 +369,7 @@ func (c *AuthConfig) verifySimpleAuth(req *http.Request) error {
 
 	// Use constant-time comparison to prevent timing attacks
 	if !hmac.Equal([]byte(secret), c.Secret.Bytes()) {
-		return fmt.Errorf("authentication failed: invalid secret")
+		return errors.New("authentication failed: invalid secret")
 	}
 
 	return nil
@@ -382,7 +383,7 @@ func (c *AuthConfig) verifyHMACSignature(
 	opts ...VerifyOption,
 ) error {
 	if c.Secret.IsEmpty() {
-		return fmt.Errorf("secret is required for HMAC verification")
+		return errors.New("secret is required for HMAC verification")
 	}
 
 	// Apply options
@@ -393,7 +394,7 @@ func (c *AuthConfig) verifyHMACSignature(
 	timestampStr := req.Header.Get(headerOrDefault(c.TimestampHeader, DefaultTimestampHeader))
 
 	if signature == "" || timestampStr == "" {
-		return fmt.Errorf("missing authentication headers")
+		return errors.New("missing authentication headers")
 	}
 
 	// Parse timestamp
@@ -408,12 +409,12 @@ func (c *AuthConfig) verifyHMACSignature(
 
 	// Reject if timestamp is too old
 	if timeDiff > options.MaxAge {
-		return fmt.Errorf("request timestamp expired")
+		return errors.New("request timestamp expired")
 	}
 
 	// Reject if timestamp is too far in the future (clock skew attack prevention)
 	if timeDiff < -options.MaxAge {
-		return fmt.Errorf("request timestamp is too far in the future")
+		return errors.New("request timestamp is too far in the future")
 	}
 
 	// Read body with size limit and restore for subsequent handlers
@@ -432,7 +433,7 @@ func (c *AuthConfig) verifyHMACSignature(
 
 	// Compare signatures
 	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
-		return fmt.Errorf("signature verification failed")
+		return errors.New("signature verification failed")
 	}
 
 	return nil
@@ -454,7 +455,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 	opts ...VerifyOption,
 ) error {
 	if c.Secret.IsEmpty() {
-		return fmt.Errorf("secret is required for GitHub mode verification")
+		return errors.New("secret is required for GitHub mode verification")
 	}
 
 	// Apply verification options (primarily for MaxBodySize)
@@ -483,7 +484,7 @@ func (c *AuthConfig) verifyGitHubSignature(
 
 	// Constant-time comparison to prevent timing attacks
 	if !hmac.Equal([]byte(signature), []byte(c.calculateGitHubSignature(body))) {
-		return fmt.Errorf("signature verification failed")
+		return errors.New("signature verification failed")
 	}
 
 	return nil
